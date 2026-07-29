@@ -1,5 +1,12 @@
 # drank
 
+> [!IMPORTANT]
+> This public repository is preserved for history and attribution. The
+> maintained implementation has moved to a private Foundry monorepo under
+> `foundry/services/drank`. It is created and maintained by
+> [Sarthak Agrawal](https://sarthakagrawal.dev). Current product context:
+> [SaaS Maker](https://sassmaker.com/p/drank).
+
 **Product:** [domains.sassmaker.com](https://domains.sassmaker.com)
 
 
@@ -127,8 +134,3 @@ The core dataset and leaderboard from drank power a first-class lens inside [Hig
 - The full interactive experience (personal predictions, local tracking, detailed history) lives here as the standalone companion tool.
 - Data stays in the public GitHub JSON + GitHub Action pipeline for easy cross-product reuse.
 - Integrated as the `/domains` lens inside https://highsignal.app (web authority leaderboard + community nominations).
-> [!IMPORTANT]
-> This repository was merged into
-> [`sass-maker/fleet-workspace`](https://github.com/sass-maker/fleet-workspace)
-> at `fleet-ops/services/drank/`. It is retained for history and attribution
-> only; do not clone it for Fleet setup or development.
