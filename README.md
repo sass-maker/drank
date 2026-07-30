@@ -2,8 +2,9 @@
 
 > [!IMPORTANT]
 > This public repository is preserved for history and attribution. The
-> maintained implementation has moved to a private Foundry monorepo under
-> `foundry/services/drank`. It is created and maintained by
+> maintained implementation is
+> [`foundry/services/drank`](https://github.com/sass-maker/fleet-workspace/tree/main/foundry/services/drank)
+> in the private Fleet Workspace. It is created and maintained by
 > [Sarthak Agrawal](https://sarthakagrawal.dev). Current product context:
 > [SaaS Maker](https://sassmaker.com/p/drank).
 
