@@ -15,6 +15,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
+import { configuredTargets } from './configured-targets.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
@@ -67,13 +69,6 @@ async function fetchDR(domain) {
 
 async function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-export function configuredTargets(configuredSites, explicitTargets = []) {
-  const targets = (explicitTargets.length > 0 ? explicitTargets : configuredSites).map((domain) =>
-    String(domain).trim().toLowerCase()
-  );
-  return [...new Set(targets.filter(Boolean))];
 }
 
 async function main() {

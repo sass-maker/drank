@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { configuredTargets } from './update-global-dr.mjs';
+import { configuredTargets } from './configured-targets.mjs';
 
 describe('configuredTargets', () => {
   it('prefers explicit targets and removes duplicates', () => {
