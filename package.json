@@ -12,20 +12,28 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "cf:build": "pnpm run build",
-    "deploy": "pnpm run build && wrangler pages deploy out --project-name=drank",
+    "deploy": "pnpm run build && pnpm --allow-build=esbuild --allow-build=workerd dlx wrangler@4.120.0 pages deploy out --project-name=drank --branch=main",
     "size": "size-limit",
     "test:coverage": "vitest run --coverage",
     "docs:check": "bash scripts/validate_docs.sh",
     "docs:build": "cd docs-site && pnpm run build",
     "docs:dev": "cd docs-site && pnpm run dev",
     "knip": "knip --no-exit-code --reporter symbols",
-    "knip:strict": "knip --reporter symbols"
+    "knip:strict": "knip --reporter symbols",
+    "quality:unused": "pnpm run knip:strict",
+    "quality:complexity": "node scripts/check-code-health.mjs complexity",
+    "quality:duplication": "jscpd app components functions lib scripts --format javascript,typescript --min-lines 8 --min-tokens 60 --mode strict --ignore '**/*.test.*,**/*.spec.*,**/node_modules/**,**/coverage/**,**/.next/**,**/out/**' --threshold 0 --silent --no-tips",
+    "quality:cycles": "knip --cycles",
+    "quality:dependencies": "node scripts/check-code-health.mjs dependencies",
+    "quality": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:coverage && pnpm run quality:unused && pnpm run quality:complexity && pnpm run quality:duplication && pnpm run quality:cycles && pnpm run quality:dependencies"
   },
   "dependencies": {
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
-    "next": "16.2.9",
+    "next": "16.2.11",
     "posthog-js": "^1.396.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -34,16 +42,24 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
     "@size-limit/file": "^11.2.0",
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.9",
-    "blume": "1.0.4",
+    "jscpd": "5.0.14",
     "knip": "^6.6.3",
     "size-limit": "^11.2.0",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "ultracite": "7.10.2",
     "vitest": "^4.1.9"
+  },
+  "pnpm": {
+    "overrides": {
+      "nanoid@>=3.0.0 <4.0.0": "3.3.18",
+      "postcss@>=8.0.0 <9.0.0": "8.5.23",
+      "sharp@>=0.34.0 <0.35.0": "0.35.0"
+    }
   }
 }

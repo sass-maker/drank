@@ -1,5 +1,5 @@
 # drank — PROJECT STATUS
-Last updated: 2026-07-18
+Last updated: 2026-08-09
 
 ## Why / What
 
@@ -11,15 +11,15 @@ Last updated: 2026-07-18
 
 **IN scope:** Single-page dashboard (`app/page.tsx`), `/api/dr` and `/api/advisor` Pages Functions, global JSON pipeline, High Signal integration.
 
-**OUT of scope:** Production deploy (straightforward but not blocking local use), server-side personal domain storage without explicit opt-in.
+**OUT of scope:** Server-side personal domain storage without explicit opt-in.
 
 ## Dependencies
 
 ### External
 
-- **Ahrefs free public API:** Domain Rating endpoint proxied via `/api/dr`; ~750ms between bulk refreshes; no API keys.
-- **GitHub Actions:** weekly global DR update cron.
-- **Cloudflare Pages:** deploy target (static export via `output: 'export'`, served from `out/`; `/api/dr` runs as a Pages Function).
+- **Ahrefs free public API:** Domain Rating endpoint proxied via `/api/dr`; ~750ms between bulk refreshes; free/unit-free but needs `AHREFS_API_KEY` from 2026-08-10.
+- **GitHub Actions:** weekly global DR update cron (passes `AHREFS_API_KEY` via `secrets: inherit`).
+- **Cloudflare Pages:** deploy target (static export via `output: 'export'`, served from `out/`; `/api/dr` runs as a Pages Function with optional `AHREFS_API_KEY` binding).
 
 ### Internal (fleet)
 
@@ -28,7 +28,7 @@ Last updated: 2026-07-18
 
 ### Stack & commands
 
-**Stack:** Next.js 16 App Router + React 19 + TypeScript + Tailwind v4 + Recharts + framer-motion; versioned localStorage (v2). No database, no auth.
+**Stack:** Next.js 16 App Router + React 19 + TypeScript + Tailwind v4 + Recharts + framer-motion; versioned localStorage (v2). Biome resolves the pinned Ultracite framework presets through Fleet's shared lint baseline. No database, no auth.
 
 | Command | Purpose |
 |---------|---------|
@@ -37,13 +37,55 @@ Last updated: 2026-07-18
 | `pnpm build` | Production build (`next build --webpack` → `out/`) |
 | `pnpm start` | Production server (rarely used; we deploy static `out/`) |
 | `pnpm lint` / `pnpm check` | Biome check (`biome check .`; no ESLint) |
+| `pnpm quality` | Complete Fleet code-health gate |
 
-**Deploy:** Cloudflare Pages — `pnpm deploy` (builds then `wrangler pages deploy out --project-name=drank`); CI auto-deploys on push to `main` via `CLOUDFLARE_API_TOKEN`.
+**Deploy:** Cloudflare Pages — manual `pnpm deploy` (builds then runs the pinned
+Wrangler Pages command). CI validates `main` but does not deploy it.
 
-**Env files:** None required. No secrets.
+**Env files:** none required for local static UI. Production Pages Function and weekly DR cron need `AHREFS_API_KEY` (free Ahrefs account key; not a paid API plan) from 2026-08-10.
 
 ## Timeline
 
+- **2026-08-20 — Standalone ownership restored:** Synchronized the maintained
+  Drank source out of Fleet Workspace into `sass-maker/drank`, restored local
+  checks and documentation, and made deploys explicitly manual. Fleet retains
+  only portfolio and cross-product metric references.
+- **2026-08-12** — Adopted Fleet's measurable code-health gate across format,
+  lint, types, tests and coverage, unused code, complexity, duplication, cycles,
+  and dependency risk. Removed the duplicate batch-refresh implementation and
+  redundant root Blume boundary; remaining exact legacy baselines are tracked
+  in GitHub issue #322.
+- **2026-08-09** — Released the tested dashboard to the `drank` Cloudflare
+  Pages project, verified the public surface, and pinned Next.js output tracing
+  to the component root so monorepo and component lockfiles no longer produce a
+  misleading build warning.
+- **2026-08-09** — Passed the maintenance release smoke for add, refresh, and
+  JSON export against the production static build. Removed the invalid App
+  Router ICO that made the Next.js development route fail, and switched the
+  default observation refresh from an unreachable private-repository raw URL
+  to the published same-origin data copy. Production deployment remains a
+  separate manual action.
+- **2026-08-09** — Adopted Fleet's shared Ultracite-backed Biome baseline as
+  the bounded first pilot. The existing check now resolves pinned React,
+  Next.js, and Vitest presets while retaining the documented Fleet exceptions;
+  generated generic lint guidance remains separate from product-owned
+  `AGENTS.md` instructions.
+- **2026-08-07** — Wired optional `AHREFS_API_KEY` into `/api/dr`, the weekly
+  global/Fleet DR update script, and the reusable workflow `secrets: inherit`
+  path so free DR lookups keep working after Ahrefs' 2026-08-10 auth change.
+- **2026-08-05** — Removed the dashboard webfont dependency from the initial
+  render path. The production build now uses the system font stack, eliminating
+  the font wait that delayed the text LCP shell.
+- **2026-07-31** — Restored the documented weekly global and Fleet DR refresh
+  as a monorepo-root GitHub Action with bounded concurrency, timeout, and
+  write permissions.
+- **2026-07-31** — Aligned search and agent discovery to the three canonical
+  public pages. The HTML sitemap now derives from the generated agent catalog,
+  query-string duplicates are excluded, and Home, Data, and Changelog each
+  have substantive Markdown plus route-correct canonical and social metadata.
+- **2026-07-29** — Added the owned `/changelog` surface with verified editorial
+  release history. The dashboard links to it alongside the GitHub Issues
+  roadmap and canonical Fleet source directory.
 - **2026-07-13** — Shipped DR Advisor on the current Cloudflare Pages architecture: explicit, structured explanations grounded only in observed DR/trend, browser-local caching, and fail-closed server-side gateway credentials.
 - **2026-07-02** — Added Next.js error boundaries (`app/error.tsx`, `app/global-error.tsx`); removed dead `web-vitals` dependency and unused vitals files.
 - **Weekly (Mondays ~04:00 UTC)** — GitHub Action `update-global-dr.yml` runs `scripts/update-global-dr.mjs`, commits `data/global-dr.json`.
@@ -52,7 +94,11 @@ Last updated: 2026-07-18
 ## Products
 
 - **Standalone dashboard:** single-page app (`app/page.tsx`); deploys to Cloudflare Pages (static export). Also runs locally at http://localhost:3000.
-- **Shared data pipeline:** `data/global-dr.json` + `data/global-sites.json` — ~45 global example sites; fetchable from raw GitHub JSON at runtime.
+- **Changelog:** `/changelog` keeps verified product history on the product
+  domain; planned work remains in Fleet Workspace GitHub Issues.
+- **Shared data pipeline:** `data/global-dr.json` + `data/global-sites.json` —
+  ~45 global example sites; the static export publishes current observations
+  at `/data/global-dr.json` while the site list remains build-pinned.
 - **High Signal lens:** https://highsignal.app/domains — consumes global DR history + community nominations; full interactive experience (personal predictions, local tracking, detailed history) remains in drank standalone.
 
 ## Features (shipped)
@@ -70,7 +116,8 @@ Last updated: 2026-07-18
 - All personal domains, history, predictions, settings in browser `localStorage` (v2 schema via `lib/useTrackedDomains.ts`).
 - Global example sites (~45) load from `data/global-dr.json` — identical for all users, updated weekly by GitHub Action.
 - Client calls `/api/dr?target=` → Cloudflare Pages Function (`functions/api/dr.ts`) proxies Ahrefs free endpoint with friendly User-Agent (CORS bypass).
-- Global data also fetchable from raw GitHub JSON at runtime (no redeploy needed for DR updates).
+- The browser refreshes global observations from the same-origin
+  `/data/global-dr.json`; it never probes the private Fleet repository.
 - No auth, no server storage of user data.
 
 ### Global & social
@@ -108,23 +155,8 @@ Last updated: 2026-07-18
 - `lib/useTrackedDomains.ts` — state + refresh logic.
 - `data/global-sites.json`, `data/global-dr.json` — shared history.
 
-## Todo / Planned / Deferred / Blocked
+## Work queue
 
-### Planned
-
-1. Move GitHub Action workflow to monorepo root `.github/workflows/` (currently under `drank/.github/workflows/update-global-dr.yml`).
-2. Optional opt-in server-side weekly cron (D1 + watch id) for always-fresh personal domains.
-3. Bulk edit or CSV import for personal domain lists (`lib/useTrackedDomains.ts`).
-4. Deploy to Cloudflare Pages (`pnpm deploy` or via CI).
-
-### Deferred
-
-- Production deploy to Cloudflare Pages — config and CI are ready; manual `wrangler pages deploy` (or CI push to `main`) when ready.
-- Any backend that stores user domain lists without explicit opt-in design.
-- True always-on server cron for personal lists (requires opt-in server storage).
-
-### Blocked
-
-- Real background server crons cannot touch per-user localStorage — weekly refresh only when tab is open.
-- GitHub Action lives under project-local `.github/` rather than fleet monorepo root.
-- Limited test coverage (vitest configured, `lib/utils.test.ts` exists); manual smoke on add/refresh/export flows.
+Open work is tracked only in [GitHub Issues](https://github.com/sass-maker/drank/issues).
+An open issue is a to-do, a linked pull request is in progress, and merge plus
+issue closure makes the work done.

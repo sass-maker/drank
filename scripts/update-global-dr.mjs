@@ -3,7 +3,9 @@
  * GitHub Action script to update shared historical Domain Rating data
  * for the global example sites.
  *
- * Fetches from Ahrefs free public endpoint (no key required).
+ * Fetches from Ahrefs' free public domain-rating-free endpoint. Free and
+ * unit-free, but requires an API key from 2026-08-10 (AHREFS_API_KEY env var):
+ * https://docs.ahrefs.com/en/api/reference/public/get-domain-rating-free
  * Appends weekly-ish snapshots to data/global-dr.json
  *
  * Run locally: node scripts/update-global-dr.mjs
@@ -11,7 +13,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -24,6 +26,12 @@ const flag = (name, fallback) => {
 const SITES_PATH = flag('--sites', join(ROOT, 'data/global-sites.json'));
 const DATA_PATH = flag('--data', join(ROOT, 'data/global-dr.json'));
 const LABEL = flag('--label', 'global').split('/').at(-1);
+const onlyIndex = args.indexOf('--only');
+const ONLY_DOMAIN = onlyIndex >= 0 ? args[onlyIndex + 1]?.trim().toLowerCase() : null;
+const EXPLICIT_TARGETS = args.flatMap((value, index) =>
+  value === '--target' && args[index + 1] ? [args[index + 1].trim().toLowerCase()] : []
+);
+if (onlyIndex >= 0 && !ONLY_DOMAIN) throw new Error('--only requires a domain');
 
 const API_BASE = 'https://api.ahrefs.com/v3/public/domain-rating-free';
 const DELAY_MS = 650; // be nice to the free public endpoint
@@ -35,6 +43,9 @@ async function fetchDR(domain) {
       headers: {
         'User-Agent': 'drank-global-update/1.0 (+github-actions)',
         Accept: 'application/json',
+        ...(process.env.AHREFS_API_KEY
+          ? { Authorization: `Bearer ${process.env.AHREFS_API_KEY}` }
+          : {}),
       },
     });
     if (!res.ok) {
@@ -58,10 +69,26 @@ async function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+export function configuredTargets(configuredSites, explicitTargets = []) {
+  const targets = (explicitTargets.length > 0 ? explicitTargets : configuredSites).map((domain) =>
+    String(domain).trim().toLowerCase()
+  );
+  return [...new Set(targets.filter(Boolean))];
+}
+
 async function main() {
   console.log(`Updating ${LABEL} DR history...`);
 
-  const sites = JSON.parse(readFileSync(SITES_PATH, 'utf8'));
+  const configuredSites = configuredTargets(
+    JSON.parse(readFileSync(SITES_PATH, 'utf8')),
+    EXPLICIT_TARGETS
+  );
+  const sites = ONLY_DOMAIN
+    ? configuredSites.filter((domain) => domain.toLowerCase() === ONLY_DOMAIN)
+    : configuredSites;
+  if (ONLY_DOMAIN && sites.length === 0) {
+    throw new Error(`${ONLY_DOMAIN} is not present in ${SITES_PATH}`);
+  }
   console.log(`  Sites: ${sites.length}`);
 
   let existing = { lastUpdated: null, domains: {} };
@@ -133,7 +160,9 @@ async function main() {
   console.log('Done.');
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

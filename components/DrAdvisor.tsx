@@ -11,8 +11,10 @@ import {
   type DrAdvisorAdvice,
   type DrAdvisorRequest,
 } from '@/lib/dr-advisor';
+import { TurnstileWidget } from '@/components/TurnstileWidget';
 
 const CACHE_KEY = 'drank:advisor:v1';
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '0x4AAAAAAECKLUO4YP3-eQPD';
 
 function readCache(measurementKey: string): CachedDrAdvisorAdvice | null {
   try {
@@ -55,6 +57,8 @@ export function DrAdvisor({ request }: { request: DrAdvisorRequest }) {
   const [isCached, setIsCached] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
 
   useEffect(() => {
     const cached = readCache(measurementKey);
@@ -65,13 +69,14 @@ export function DrAdvisor({ request }: { request: DrAdvisorRequest }) {
   }, [measurementKey]);
 
   const generate = async () => {
+    if (!turnstileToken) return;
     setIsLoading(true);
     setError(null);
     try {
       const response = await fetch('/api/advisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(normalized),
+        body: JSON.stringify({ ...normalized, turnstileToken }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         advice?: unknown;
@@ -95,6 +100,8 @@ export function DrAdvisor({ request }: { request: DrAdvisorRequest }) {
       setError(caught instanceof Error ? caught.message : 'Advice is temporarily unavailable.');
     } finally {
       setIsLoading(false);
+      setTurnstileToken(null);
+      setTurnstileResetSignal((value) => value + 1);
     }
   };
 
@@ -113,31 +120,39 @@ export function DrAdvisor({ request }: { request: DrAdvisorRequest }) {
             It does not inspect backlinks or your site.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={generate}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-950 disabled:opacity-60"
-        >
-          {isLoading ? (
-            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-          ) : advice ? (
-            <RefreshCw className="h-3.5 w-3.5" />
-          ) : (
-            <Lightbulb className="h-3.5 w-3.5" />
-          )}
-          {isLoading ? 'Explaining…' : advice ? 'Regenerate' : 'Explain this DR'}
-        </button>
+        <div className="space-y-2">
+          <TurnstileWidget
+            siteKey={TURNSTILE_SITE_KEY}
+            action="turnstile-spin-v2"
+            resetSignal={turnstileResetSignal}
+            onTokenChange={setTurnstileToken}
+          />
+          <button
+            type="button"
+            onClick={generate}
+            disabled={isLoading || !turnstileToken}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-950 disabled:opacity-60"
+          >
+            {isLoading ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : advice ? (
+              <RefreshCw className="h-3.5 w-3.5" />
+            ) : (
+              <Lightbulb className="h-3.5 w-3.5" />
+            )}
+            {isLoading ? 'Explaining…' : advice ? 'Regenerate' : 'Explain this DR'}
+          </button>
+        </div>
       </div>
 
-      {error && (
+      {error ? (
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-950/20 p-3 text-sm text-amber-200">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error} DR tracking and history are still available.</span>
         </div>
-      )}
+      ) : null}
 
-      {advice && (
+      {advice ? (
         <div className="mt-5 space-y-4">
           <div>
             <div className="text-[10px] uppercase tracking-widest text-emerald-300/70">
@@ -161,14 +176,14 @@ export function DrAdvisor({ request }: { request: DrAdvisorRequest }) {
               </li>
             ))}
           </ol>
-          {generatedAt && (
+          {generatedAt ? (
             <div className="text-[10px] text-white/35">
               {isCached ? 'Loaded from this browser' : 'Generated now'} ·{' '}
               {new Date(generatedAt).toLocaleString()}
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

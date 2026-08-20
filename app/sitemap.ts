@@ -4,71 +4,37 @@ import { join } from 'node:path';
 
 export const dynamic = 'force-static';
 
-const siteUrl = 'https://domains.sassmaker.com';
-
-type GlobalDrFile = {
-  lastUpdated?: string;
-  domains?: Record<string, unknown>;
+type AgentCatalog = {
+  surfaces?: Array<{
+    url?: string;
+  }>;
 };
 
-function loadDomainList(): string[] {
+function loadPublicUrls(): string[] {
   try {
-    const path = join(process.cwd(), 'data/global-dr.json');
-    const data = JSON.parse(readFileSync(path, 'utf8')) as GlobalDrFile;
-    return Object.keys(data.domains ?? {});
+    const path = join(process.cwd(), 'public/api-ai.json');
+    const catalog = JSON.parse(readFileSync(path, 'utf8')) as AgentCatalog;
+    return (catalog.surfaces ?? [])
+      .map((surface) => surface.url)
+      .filter((url): url is string => typeof url === 'string');
   } catch {
-    try {
-      const path = join(process.cwd(), 'data/global-sites.json');
-      const data = JSON.parse(readFileSync(path, 'utf8')) as string[];
-      return Array.isArray(data) ? data : [];
-    } catch {
-      return [];
-    }
+    return [];
   }
 }
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
-  const domains = loadDomainList();
-
-  const entries: MetadataRoute.Sitemap = [
-    {
-      url: siteUrl,
-      lastModified: now,
-      changeFrequency: 'daily',
-      priority: 1,
-    },
-    {
-      url: `${siteUrl}/data`,
-      lastModified: now,
+  return loadPublicUrls().map((url) => {
+    const entry: MetadataRoute.Sitemap[number] = {
+      url,
       changeFrequency: 'weekly',
       priority: 0.7,
-    },
-    {
-      url: `${siteUrl}/llms.txt`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.4,
-    },
-    {
-      url: `${siteUrl}/index.md`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.4,
-    },
-  ];
+    };
 
-  // Homepage is the full tracker; domains are hash/query deep-links on the same
-  // surface when the UI supports them. Emit domain anchors as query URLs so
-  // Search Console sees a large, stable inventory of tracked properties.
-  for (const domain of domains) {
-    entries.push({
-      url: `${siteUrl}/?domain=${encodeURIComponent(domain)}`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.5,
-    });
-  }
+    if (new URL(url).pathname === '/') {
+      entry.changeFrequency = 'daily';
+      entry.priority = 1;
+    }
 
-  return entries;
+    return entry;
+  });
 }

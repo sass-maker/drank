@@ -6,7 +6,7 @@ Ahrefs Domain Rating tracker feeding High Signal /domains and fleet domain marke
 
 # DRank
 
-Ahrefs Domain Rating tracker for fleet domains.
+Browser-local Domain Rating history for public examples and private operator lists.
 
 ## Agent entrypoints
 
@@ -16,7 +16,9 @@ Ahrefs Domain Rating tracker for fleet domains.
 
 ## Product links
 
-- Home: https://domains.sassmaker.com/ — Domain rating tracker
+- Home: https://domains.sassmaker.com/ — Track Domain Rating history locally without an account
+- Public DR dataset: https://domains.sassmaker.com/data — Inspect and download weekly public Domain Rating observations
+- Changelog: https://domains.sassmaker.com/changelog — Verified DRank product and release history
 
 ## Machine surfaces
 
@@ -27,7 +29,7 @@ Ahrefs Domain Rating tracker for fleet domains.
 - https://domains.sassmaker.com/sitemap.xml
 - https://domains.sassmaker.com/robots.txt
 
-## Contact / fleet
+## Contact
 
-- Fleet: https://sassmaker.com
+- Owner: https://sarthakagrawal.dev
 - Agent email for directory verification: sarthakagrawal@agentmail.to

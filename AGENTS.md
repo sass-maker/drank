@@ -4,10 +4,6 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-## Shared Fleet Standard
-
-Also read and follow the shared fleet-level agent standard at `../AGENTS.md`. Treat this repository as owned product code: protect production stability, keep changes scoped, verify work, and record durable follow-up tasks when something remains incomplete or blocked.
-
 ## What this is
 
 **drank** — a private, local-first Next.js dashboard for tracking Ahrefs
@@ -31,11 +27,21 @@ Product: <https://domains.sassmaker.com>. Full product context:
 | `pnpm dev` | Dev server → http://localhost:3000 |
 | `pnpm build` | Production build (`next build --webpack` → `out/`) |
 | `pnpm lint` / `pnpm check` | Biome check |
+| `pnpm typecheck` | Strict TypeScript check |
+| `pnpm test` / `pnpm test:coverage` | Vitest, with enforced coverage floors in the coverage form |
+| `pnpm quality` | Complete Fleet code-health gate |
 | `pnpm size` | size-limit on `out/` bundles |
-| `pnpm vitest run` | Run tests (no bare `pnpm test` script) |
 | `pnpm deploy` | Build + `wrangler pages deploy out --project-name=drank` |
 | `pnpm docs:check` | Docs link check + Blume build |
 | `pnpm docs:build` | Blume build → `docs-site/dist/` |
+
+## Generated lint guidance
+
+Ultracite-generated lint guidance lives in [ULTRACITE.md](ULTRACITE.md). This
+file remains authoritative when project commands, product ownership, safety,
+or release rules differ from generic generated guidance. Regenerate from the
+Fleet Workspace root with `pnpm generate:lint-context` and verify drift with
+`pnpm check:lint-context`.
 
 ## Critical constraints
 
@@ -71,7 +77,6 @@ presentation + search layer.
 - [`docs/operations/jobs/weekly-global-dr.md`](docs/operations/jobs/weekly-global-dr.md) — the weekly cron.
 - [`docs/knowledge/`](docs/knowledge/) — learnings + failed approaches.
 - [`docs/archive/`](docs/archive/) — superseded docs kept for history.
-- [`openspec/`](openspec/) — spec-driven feature specs (dr-advisor).
 
 ## Documentation maintenance rules
 
@@ -90,9 +95,8 @@ presentation + search layer.
    Edit the Markdown in `docs/` and rebuild.
 7. **Preserve history.** Prefer `docs/archive/<name>.md` over deletion.
    Use `git mv` when moving docs so rename history is kept.
-8. **Status**: `STATUS.md` is the short view; `PROJECT_STATUS.md` is the
-   durable fleet-mandated record. Update `PROJECT_STATUS.md` when PR-sized
-   work completes; keep `STATUS.md` in sync as the short view.
+8. **Status**: `PROJECT_STATUS.md` is the durable fleet-mandated record for
+   current/shipped truth. GitHub Issues owns all open work.
 
 ## Out of scope for this repo
 

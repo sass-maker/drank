@@ -58,5 +58,4 @@ client bundle.
 
 - `functions/api/advisor.ts`, `lib/dr-advisor.ts`, `components/DrAdvisor.tsx`
 - `functions/api/advisor.test.ts`, `lib/dr-advisor.test.ts`
-- OpenSpec: `openspec/specs/dr-advisor/spec.md`
 - [Configure DR Advisor gateway runbook](../../operations/runbooks/advisor-gateway.md)

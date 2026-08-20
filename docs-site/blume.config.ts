@@ -32,6 +32,15 @@ export default defineConfig({
   search: {
     provider: 'orama',
   },
+  theme: {
+    // Preserve Blume's default typography while avoiding Google Fonts' brittle
+    // build-time URLs in CI. Astro still downloads and self-hosts these fonts.
+    fonts: {
+      body: { name: 'Inter', provider: 'fontsource' },
+      display: { name: 'Inter Tight', provider: 'fontsource' },
+      mono: { name: 'IBM Plex Mono', provider: 'fontsource' },
+    },
+  },
   ai: {
     llmsTxt: true,
   },

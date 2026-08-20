@@ -54,6 +54,22 @@ function normalizedDomain(value: unknown): string | null {
   return domain;
 }
 
+function parseTrendDelta(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  if (typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 100) {
+    return value;
+  }
+  return undefined;
+}
+
+function parseTrendPeriodDays(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 365) {
+    return value;
+  }
+  return undefined;
+}
+
 export function parseDrAdvisorRequest(value: unknown): DrAdvisorRequest {
   if (!isRecord(value)) throw new Error('Invalid advisor request.');
   const domain = normalizedDomain(value.domain);
@@ -69,23 +85,8 @@ export function parseDrAdvisorRequest(value: unknown): DrAdvisorRequest {
   if (!['up', 'down', 'flat', 'unknown'].includes(String(direction))) {
     throw new Error('Invalid trend direction.');
   }
-  const delta =
-    trend.delta === null
-      ? null
-      : typeof trend.delta === 'number' &&
-          Number.isFinite(trend.delta) &&
-          Math.abs(trend.delta) <= 100
-        ? trend.delta
-        : undefined;
-  const periodDays =
-    trend.periodDays === null
-      ? null
-      : typeof trend.periodDays === 'number' &&
-          Number.isInteger(trend.periodDays) &&
-          trend.periodDays >= 1 &&
-          trend.periodDays <= 365
-        ? trend.periodDays
-        : undefined;
+  const delta = parseTrendDelta(trend.delta);
+  const periodDays = parseTrendPeriodDays(trend.periodDays);
   if (delta === undefined || periodDays === undefined) throw new Error('Invalid trend bounds.');
 
   return {

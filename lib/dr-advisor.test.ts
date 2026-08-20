@@ -18,6 +18,66 @@ describe('DR Advisor contracts', () => {
     expect(() => parseDrAdvisorRequest({ ...request, currentDr: 101 })).toThrow();
   });
 
+  it('accepts null delta and periodDays', () => {
+    expect(
+      parseDrAdvisorRequest({
+        ...request,
+        trend: { direction: 'unknown', delta: null, periodDays: null },
+      })
+    ).toEqual({
+      ...request,
+      trend: { direction: 'unknown', delta: null, periodDays: null },
+    });
+  });
+
+  it('rejects non-finite delta', () => {
+    expect(() =>
+      parseDrAdvisorRequest({
+        ...request,
+        trend: { direction: 'up', delta: Infinity, periodDays: 7 },
+      })
+    ).toThrow();
+  });
+
+  it('rejects delta with magnitude > 100', () => {
+    expect(() =>
+      parseDrAdvisorRequest({ ...request, trend: { direction: 'up', delta: 101, periodDays: 7 } })
+    ).toThrow();
+  });
+
+  it('rejects non-integer periodDays', () => {
+    expect(() =>
+      parseDrAdvisorRequest({ ...request, trend: { direction: 'up', delta: 2, periodDays: 1.5 } })
+    ).toThrow();
+  });
+
+  it('rejects periodDays out of range', () => {
+    expect(() =>
+      parseDrAdvisorRequest({ ...request, trend: { direction: 'up', delta: 2, periodDays: 0 } })
+    ).toThrow();
+    expect(() =>
+      parseDrAdvisorRequest({ ...request, trend: { direction: 'up', delta: 2, periodDays: 366 } })
+    ).toThrow();
+  });
+
+  it('rejects invalid trend direction', () => {
+    expect(() =>
+      parseDrAdvisorRequest({
+        ...request,
+        trend: { direction: 'sideways', delta: 2, periodDays: 7 },
+      })
+    ).toThrow();
+  });
+
+  it('rejects non-object request', () => {
+    expect(() => parseDrAdvisorRequest('not an object')).toThrow();
+    expect(() => parseDrAdvisorRequest(null)).toThrow();
+  });
+
+  it('rejects missing trend', () => {
+    expect(() => parseDrAdvisorRequest({ domain: 'example.com', currentDr: 42 })).toThrow();
+  });
+
   it('parses a fenced structured response', () => {
     const advice = parseDrAdvisorAdvice(
       '```json\n' +

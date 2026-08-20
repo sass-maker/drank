@@ -4,11 +4,14 @@ import {
   type DrAdvisorAdvice,
   type DrAdvisorRequest,
 } from '../../lib/dr-advisor';
+import { verifyTurnstile } from '../lib/turnstile';
 
 type AdvisorEnv = {
   FREE_AI_BASE_URL?: string;
   FREE_AI_GATEWAY_API_KEY?: string;
   GATEWAY_API_KEY?: string;
+  TURNSTILE_HOSTNAMES?: string;
+  TURNSTILE_SECRET?: string;
 };
 
 type AdvisorContext = {
@@ -41,10 +44,28 @@ export async function onRequestPost(context: AdvisorContext): Promise<Response> 
   }
 
   let input: DrAdvisorRequest;
+  let turnstileToken: unknown;
   try {
-    input = parseDrAdvisorRequest(await context.request.json());
+    const payload = (await context.request.json()) as Record<string, unknown>;
+    input = parseDrAdvisorRequest(payload);
+    turnstileToken = payload.turnstileToken;
   } catch {
     return json({ error: 'A valid domain, DR, and bounded trend are required.' }, 400);
+  }
+
+  const remoteIp =
+    context.request.headers.get('CF-Connecting-IP') ??
+    context.request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ??
+    'unknown';
+  const verified = await verifyTurnstile({
+    token: turnstileToken,
+    action: 'turnstile-spin-v2',
+    remoteIp,
+    secret: context.env.TURNSTILE_SECRET,
+    hostnameList: context.env.TURNSTILE_HOSTNAMES,
+  });
+  if (!verified) {
+    return json({ error: 'Verification failed. Please try again.' }, 403);
   }
 
   const baseUrl = (context.env.FREE_AI_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');

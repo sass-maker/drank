@@ -112,7 +112,10 @@ wants a real `User-Agent`. So the function normalizes the target hostname
 `https://api.ahrefs.com/v3/public/domain-rating-free`, unwraps
 `domain_rating.domain_rating`, and returns `{ domain, dr, fetchedAt }`. It maps
 Ahrefs 429s straight through so the UI can show a friendly rate-limit message.
-It holds **no secrets** — the Ahrefs endpoint is free and unauthenticated.
+The endpoint stays free and unit-free, but Ahrefs requires an API key on the
+`public` endpoints from **2026-08-10**. When present, the function sends
+`Authorization: Bearer $AHREFS_API_KEY` from the Pages environment; without it,
+unauthenticated calls fail after that date.
 
 **`functions/api/advisor.ts` — the DR Advisor gateway.** This one *does* hold a
 secret (`FREE_AI_GATEWAY_API_KEY`), which is the whole point of putting it

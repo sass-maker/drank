@@ -17,6 +17,20 @@
       "md": "https://domains.sassmaker.com/index.md",
       "kind": "static",
       "description": "Product home"
+    },
+    {
+      "id": "public-dr-dataset",
+      "url": "https://domains.sassmaker.com/data",
+      "md": "https://domains.sassmaker.com/data.md",
+      "kind": "static",
+      "description": "Inspect and download weekly public Domain Rating observations"
+    },
+    {
+      "id": "changelog",
+      "url": "https://domains.sassmaker.com/changelog",
+      "md": "https://domains.sassmaker.com/changelog.md",
+      "kind": "static",
+      "description": "Verified DRank product and release history"
     }
   ],
   "auth": {

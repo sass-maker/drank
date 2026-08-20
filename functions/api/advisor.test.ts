@@ -6,7 +6,21 @@ const body = {
   domain: 'example.com',
   currentDr: 42,
   trend: { direction: 'up', delta: 2, periodDays: 7 },
+  turnstileToken: 'test-token',
 };
+const turnstileEnv = {
+  TURNSTILE_SECRET: 'test-secret',
+  TURNSTILE_HOSTNAMES: 'drank.example',
+};
+const turnstileSuccess = () =>
+  new Response(
+    JSON.stringify({
+      success: true,
+      action: 'turnstile-spin-v2',
+      hostname: 'drank.example',
+    }),
+    { status: 200 }
+  );
 
 function request(payload: unknown = body) {
   return new Request('https://drank.example/api/advisor', {
@@ -47,7 +61,8 @@ describe('POST /api/advisor', () => {
   it('returns validated advice from the configured gateway', async () => {
     const gatewayFetch = vi
       .fn()
-      .mockResolvedValue(
+      .mockResolvedValueOnce(turnstileSuccess())
+      .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ choices: [{ message: { content: JSON.stringify(validAdvice) } }] }),
           { status: 200 }
@@ -57,7 +72,11 @@ describe('POST /api/advisor', () => {
 
     const response = await onRequestPost({
       request: request(),
-      env: { FREE_AI_GATEWAY_API_KEY: 'test-key', FREE_AI_BASE_URL: 'https://gateway.test/' },
+      env: {
+        ...turnstileEnv,
+        FREE_AI_GATEWAY_API_KEY: 'test-key',
+        FREE_AI_BASE_URL: 'https://gateway.test/',
+      },
     });
 
     expect(response.status).toBe(200);
@@ -81,17 +100,23 @@ describe('POST /api/advisor', () => {
     vi.stubGlobal('fetch', gatewayFetch);
     const response = await onRequestPost({
       request: request({ ...body, currentDr: -1 }),
-      env: { GATEWAY_API_KEY: 'test-key' },
+      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
     });
     expect(response.status).toBe(400);
     expect(gatewayFetch).not.toHaveBeenCalled();
   });
 
   it('preserves a retryable failure when the provider is unavailable', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('unavailable', { status: 500 })));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(turnstileSuccess())
+        .mockResolvedValueOnce(new Response('unavailable', { status: 500 }))
+    );
     const response = await onRequestPost({
       request: request(),
-      env: { GATEWAY_API_KEY: 'test-key' },
+      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
     });
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ retryable: true });
@@ -100,17 +125,35 @@ describe('POST /api/advisor', () => {
   it('rejects invalid provider JSON', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ choices: [{ message: { content: '{"why":"no"}' } }] }), {
-          status: 200,
-        })
-      )
+      vi
+        .fn()
+        .mockResolvedValueOnce(turnstileSuccess())
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ choices: [{ message: { content: '{"why":"no"}' } }] }), {
+            status: 200,
+          })
+        )
     );
     const response = await onRequestPost({
       request: request(),
-      env: { GATEWAY_API_KEY: 'test-key' },
+      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
     });
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ retryable: true });
+  });
+
+  it('fails closed when Turnstile verification is rejected', async () => {
+    const gatewayFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ success: false }), { status: 200 }));
+    vi.stubGlobal('fetch', gatewayFetch);
+
+    const response = await onRequestPost({
+      request: request(),
+      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
+    });
+
+    expect(response.status).toBe(403);
+    expect(gatewayFetch).toHaveBeenCalledTimes(1);
   });
 });

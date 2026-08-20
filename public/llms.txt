@@ -4,14 +4,12 @@
 
 ## Product
 
-- [Home](https://domains.sassmaker.com/): Domain rating tracker
+- [Home](https://domains.sassmaker.com/): Track Domain Rating history locally without an account
+- [Public DR dataset](https://domains.sassmaker.com/data): Inspect and download weekly public Domain Rating observations
+- [Changelog](https://domains.sassmaker.com/changelog): Verified DRank product and release history
 
 ## Machine surfaces
 
 - [Agent catalog](https://domains.sassmaker.com/api/ai): JSON inventory of public surfaces
 - [Homepage markdown](https://domains.sassmaker.com/index.md): Product brief without JS
 - [This index](https://domains.sassmaker.com/llms.txt)
-
-## Optional
-
-- [Foundry](https://sassmaker.com): Parent fleet showcase

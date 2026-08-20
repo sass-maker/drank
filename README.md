@@ -1,12 +1,6 @@
 # drank
 
-> [!IMPORTANT]
-> This public repository is preserved for history and attribution. The
-> maintained implementation is
-> [`foundry/services/drank`](https://github.com/sass-maker/fleet-workspace/tree/main/foundry/services/drank)
-> in the private Fleet Workspace. It is created and maintained by
-> [Sarthak Agrawal](https://sarthakagrawal.dev). Current product context:
-> [SaaS Maker](https://sassmaker.com/p/drank).
+Canonical source: [`sass-maker/drank`](https://github.com/sass-maker/drank).
 
 **Product:** [domains.sassmaker.com](https://domains.sassmaker.com)
 
@@ -90,15 +84,14 @@ static export (`output: 'export'` → `out/`). The `/api/dr` and `/api/advisor`
 endpoints are served as Cloudflare Pages Functions (`functions/api/dr.ts`,
 `functions/api/advisor.ts`).
 
-1. Push your code to GitHub (the `drank` folder can live inside a monorepo).
+1. Push your code to GitHub.
 2. Create a Cloudflare Pages project named `drank` (or update `wrangler.toml` /
    the `deploy` script to match your project name).
 3. Build & deploy locally:
    ```bash
    pnpm deploy    # builds then runs wrangler pages deploy out --project-name=drank
    ```
-   Or let CI handle it — the `ci.yml` workflow deploys `out/` on push to `main`
-   using `CLOUDFLARE_API_TOKEN` from repo secrets.
+   Production deployment remains a separate manual action after CI passes.
 
 The app works great on Cloudflare Pages:
 - The `/api/dr` proxy runs as a Pages Function (CORS bypass + friendly User-Agent).

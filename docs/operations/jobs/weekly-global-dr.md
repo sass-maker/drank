@@ -67,8 +67,6 @@ if running locally.
 - `public/data/global-dr.json` and `public/data/fleet-dr.json` are the
   downloadable copies surfaced on the `/data` page.
 
-## Open issue
-
-The workflow lives under this project's `.github/workflows/` rather than
-the fleet monorepo root `.github/workflows/`. Moving it is tracked as
-planned work in [PROJECT_STATUS.md](../../../PROJECT_STATUS.md).
+The workflow is owned at the Fleet monorepo root and runs its commands from
+the repository root, so GitHub discovers the schedule while Drank retains
+the script and data-path contract.

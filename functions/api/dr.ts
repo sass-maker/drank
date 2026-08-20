@@ -9,7 +9,11 @@ interface AhrefsDRResponse {
   domain_rating?: { domain_rating?: number };
 }
 
-export async function onRequestGet(context: { request: Request }): Promise<Response> {
+type DrEnv = {
+  AHREFS_API_KEY?: string;
+};
+
+export async function onRequestGet(context: { request: Request; env: DrEnv }): Promise<Response> {
   const { request } = context;
   const { searchParams } = new URL(request.url);
   const target = searchParams.get('target');
@@ -43,6 +47,12 @@ export async function onRequestGet(context: { request: Request }): Promise<Respo
       headers: {
         'User-Agent': 'drank/1.0 (domain rating tracker)',
         Accept: 'application/json',
+        // Required from 2026-08-10 per Ahrefs' migration notice; the endpoint
+        // itself stays free and unit-free, only unauthenticated access ends.
+        // https://docs.ahrefs.com/en/api/reference/public/get-domain-rating-free
+        ...(context.env.AHREFS_API_KEY
+          ? { Authorization: `Bearer ${context.env.AHREFS_API_KEY}` }
+          : {}),
       },
       signal: AbortSignal.timeout(10_000),
     });
