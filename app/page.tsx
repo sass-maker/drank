@@ -1,6 +1,6 @@
 'use client';
 
-import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RefreshCw,
@@ -92,6 +92,234 @@ function createKeyboardHandler(opts: {
     }
   };
 }
+
+function buildAdvisorRequest(selected: TrackedDomain | null): DrAdvisorRequest | null {
+  if (!selected) return null;
+  const currentDr = getCurrentDR(selected);
+  if (currentDr === null) return null;
+  const trend = getTrend(selected);
+  return {
+    domain: selected.domain,
+    currentDr,
+    trend: {
+      direction: trend?.direction ?? ('unknown' as const),
+      delta: trend?.delta ?? null,
+      periodDays:
+        selected.history.length >= 2
+          ? Math.max(
+              1,
+              Math.min(
+                365,
+                Math.round(
+                  (selected.history[selected.history.length - 1].ts -
+                    selected.history[selected.history.length - 2].ts) /
+                    86_400_000
+                )
+              )
+            )
+          : null,
+    },
+  };
+}
+
+function useLcpShell() {
+  const [belowFold, setBelowFold] = useState(false);
+  useEffect(() => {
+    const shell = document.getElementById('drank-lcp-shell');
+    if (shell) {
+      shell.classList.add('drank-lcp-fading');
+      const removeShell = () => shell.remove();
+      shell.addEventListener('transitionend', removeShell, { once: true });
+      setTimeout(removeShell, 300);
+    }
+    const run = () => setBelowFold(true);
+    if ('requestIdleCallback' in window) {
+      const id = requestIdleCallback(run, { timeout: 1200 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = setTimeout(run, 0);
+    return () => clearTimeout(t);
+  }, []);
+  return { belowFold };
+}
+
+function useGlobalData() {
+  const [liveGlobalDomains, setLiveGlobalDomains] = useState<TrackedDomain[]>(GLOBAL_DOMAINS);
+  const [liveCommunityNoms, setLiveCommunityNoms] = useState<any[]>(COMMUNITY_NOMINATIONS);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const drResponse = await fetch(GLOBAL_DR_URL, { cache: 'no-store' });
+        if (cancelled || !drResponse.ok) return;
+        const freshDr = await drResponse.json();
+        const domainsObj = freshDr.domains || {};
+        const freshDomains: TrackedDomain[] = (globalSitesStatic as string[]).map(
+          (domain: string) => {
+            const hist = domainsObj[domain]?.history || [];
+            return {
+              domain,
+              history: hist,
+              lastChecked: hist.length > 0 ? hist[hist.length - 1].ts : null,
+              isCustom: false,
+            };
+          }
+        );
+        setLiveGlobalDomains(freshDomains);
+        setLiveCommunityNoms(freshDr.communityNominations || []);
+      } catch {
+        // graceful fallback to the data bundled at build time
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const leaderboard = React.useMemo(
+    () =>
+      [...liveGlobalDomains]
+        .map((d) => ({ ...d, currentDR: getCurrentDR(d) }))
+        .sort((a, b) => (b.currentDR ?? -1) - (a.currentDR ?? -1)),
+    [liveGlobalDomains]
+  );
+  return { liveGlobalDomains, liveCommunityNoms, leaderboard };
+}
+
+function useDomainSelection({
+  selectedDomain,
+  selectDomain,
+  getUserDomain,
+  liveGlobalDomains,
+}: {
+  selectedDomain: string | null;
+  selectDomain: (domain: string | null) => void;
+  getUserDomain: (domain: string) => TrackedDomain | undefined;
+  liveGlobalDomains: TrackedDomain[];
+}) {
+  const [selectedSource, setSelectedSource] = useState<'global' | 'user' | null>(null);
+  const getDomainRecord = (domain: string): TrackedDomain | undefined => {
+    const global = liveGlobalDomains.find((d) => d.domain === domain);
+    if (global) return global;
+    return getUserDomain(domain);
+  };
+  const selected = selectedDomain
+    ? selectedSource === 'user'
+      ? (getUserDomain(selectedDomain) ?? null)
+      : (getDomainRecord(selectedDomain) ?? null)
+    : null;
+  const selectedAdvisorRequest = buildAdvisorRequest(selected);
+  const openGlobalDomain = useCallback(
+    (domain: string) => {
+      setSelectedSource('global');
+      selectDomain(domain);
+    },
+    [selectDomain]
+  );
+  const openUserDomain = useCallback(
+    (domain: string) => {
+      setSelectedSource('user');
+      selectDomain(domain);
+    },
+    [selectDomain]
+  );
+  const closeSelectedDomain = useCallback(() => {
+    setSelectedSource(null);
+    selectDomain(null);
+  }, [selectDomain]);
+  return {
+    selected,
+    selectedAdvisorRequest,
+    openGlobalDomain,
+    openUserDomain,
+    closeSelectedDomain,
+  };
+}
+
+function useDrankState() {
+  const tracked = useTrackedDomains();
+  const { belowFold } = useLcpShell();
+  const { liveGlobalDomains, liveCommunityNoms, leaderboard } = useGlobalData();
+  const selection = useDomainSelection({
+    selectedDomain: tracked.selectedDomain,
+    selectDomain: tracked.selectDomain,
+    getUserDomain: tracked.getDomain,
+    liveGlobalDomains,
+  });
+  const [addInput, setAddInput] = useState('');
+  const [nominateInput, setNominateInput] = useState('');
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
+  const [_importing, setImporting] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = createKeyboardHandler({
+      showSettings,
+      selectedDomain: tracked.selectedDomain,
+      closeSelectedDomain: selection.closeSelectedDomain,
+      toggleSettings: () => setShowSettings((v) => !v),
+      addInputRef,
+    });
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tracked.selectedDomain, showSettings, selection.closeSelectedDomain]);
+  const handleAdd = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!addInput.trim()) return;
+    await tracked.addDomain(addInput);
+    setAddInput('');
+  };
+  const handleRefreshAll = async () => {
+    setIsRefreshingAll(true);
+    await tracked.refreshAll();
+    setIsRefreshingAll(false);
+  };
+  const handleImportClick = () => fileInputRef.current?.click();
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    await tracked.importData(file);
+    setImporting(false);
+    e.target.value = '';
+  };
+  const nextAutoLabel = formatNextAuto(tracked.lastAutoRefresh, tracked.autoRefreshEnabled);
+  const predictionAccuracy = React.useMemo(() => {
+    if (tracked.predictions.length === 0) return null;
+    const top20Domains = new Set(leaderboard.slice(0, 20).map((d) => d.domain));
+    const hits = tracked.predictions.filter((p) => top20Domains.has(p.domain)).length;
+    return {
+      hits,
+      total: tracked.predictions.length,
+      percent: Math.round((hits / tracked.predictions.length) * 100),
+    };
+  }, [tracked.predictions, leaderboard]);
+  return {
+    ...tracked,
+    ...selection,
+    belowFold,
+    liveGlobalDomains,
+    liveCommunityNoms,
+    leaderboard,
+    predictionAccuracy,
+    addInput,
+    setAddInput,
+    nominateInput,
+    setNominateInput,
+    isRefreshingAll,
+    showSettings,
+    setShowSettings,
+    fileInputRef,
+    addInputRef,
+    handleAdd,
+    handleRefreshAll,
+    handleImportClick,
+    handleFileChange,
+    nextAutoLabel,
+  };
+}
+
+type DrankState = ReturnType<typeof useDrankState>;
 
 function ToastStack({
   toasts,
@@ -451,232 +679,329 @@ function DomainDetailModal(props: {
   );
 }
 
+function Header({
+  onSettings,
+  onExport,
+  onRefreshAll,
+  isRefreshingAll,
+}: {
+  onSettings: () => void;
+  onExport: () => void;
+  onRefreshAll: () => Promise<void>;
+  isRefreshingAll: boolean;
+}) {
+  return (
+    <div className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/95 backdrop-blur-xl">
+      <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-zinc-950 shadow-inner">
+            <BarChart3 className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="font-semibold tracking-[-1.5px] text-2xl">drank</div>
+            <div className="text-[10px] text-zinc-500 -mt-1 font-mono">DOMAIN RATING WATCH</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onSettings}
+            className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 active:bg-white/5 transition"
+          >
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
+          <button
+            onClick={onExport}
+            className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+          >
+            <Download className="h-4 w-4" /> Export
+          </button>
+          <button
+            onClick={onRefreshAll}
+            disabled={isRefreshingAll}
+            className="flex items-center gap-2 rounded-2xl bg-white px-5 py-2 text-sm font-medium text-zinc-950 hover:bg-zinc-200 active:bg-zinc-300 disabled:opacity-60 transition"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshingAll ? 'animate-spin' : ''}`} />
+            {isRefreshingAll ? 'Refreshing…' : 'Refresh all'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Hero() {
+  return (
+    <div className="mb-10">
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-[clamp(1.75rem,8.2vw,3.75rem)] leading-[1.05] font-semibold tracking-[-0.04em] text-white sm:leading-none sm:tracking-[-3.2px]">
+            Track Domain Ratings.
+            <br />
+            100% in your browser.
+          </h1>
+          <p className="mt-3 max-w-md text-xl text-zinc-400">
+            See the authority score of ~45 popular sites and your own — free Ahrefs API, no sign-up.
+            Your personal history stays in this browser.
+          </p>
+        </div>
+        <div className="hidden lg:block text-right text-sm text-zinc-500 max-w-[260px]">
+          Press <span className="font-mono rounded bg-white/10 px-1.5 py-px">/</span> to search
+          &nbsp;•&nbsp; <span className="font-mono rounded bg-white/10 px-1.5 py-px">A</span> to add
+          &nbsp;•&nbsp; <span className="font-mono rounded bg-white/10 px-1.5 py-px">⌘S</span>{' '}
+          settings
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddDomainBar({ state }: { state: DrankState }) {
+  return (
+    <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <form onSubmit={state.handleAdd} className="flex w-full max-w-xl items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            ref={state.addInputRef}
+            id="add-input"
+            type="text"
+            value={state.addInput}
+            onChange={(e) => state.setAddInput(e.target.value)}
+            placeholder="Add your domain (mysite.com, blog.example.com...)"
+            className="w-full rounded-3xl border border-white/10 bg-zinc-900 px-5 py-3 text-sm placeholder:text-zinc-500 focus:border-white/30 focus:bg-zinc-950 focus:outline-none"
+          />
+        </div>
+        <button
+          type="submit"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-3xl bg-white px-8 text-sm font-medium text-zinc-950 transition active:scale-[0.985]"
+        >
+          <Plus className="h-4 w-4" /> Add site
+        </button>
+      </form>
+      <button
+        onClick={() => state.setShowSettings(true)}
+        className="flex items-center gap-2 self-start rounded-3xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 transition"
+      >
+        <Calendar className="h-4 w-4 text-emerald-400" />
+        <span className="font-medium text-emerald-400">{state.nextAutoLabel}</span>
+        <span className="text-white/40">•</span>
+        <span className="text-xs text-white/60">
+          {state.autoRefreshEnabled ? `${state.customCount} sites` : 'disabled'}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function SearchControls({ state }: { state: DrankState }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="relative flex-1 min-w-[220px]">
+        <Search className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-zinc-500" />
+        <input
+          id="search-input"
+          type="text"
+          value={state.search}
+          onChange={(e) => state.setSearch(e.target.value)}
+          placeholder="Search domains…"
+          className="w-full rounded-3xl border border-white/10 bg-zinc-900 pl-10 py-2.5 text-sm placeholder:text-zinc-500 focus:border-white/30"
+        />
+      </div>
+      <select
+        value={state.sortMode}
+        onChange={(e) => state.setSortMode(e.target.value as any)}
+        className="h-11 rounded-3xl border border-white/10 bg-zinc-900 px-4 text-sm focus:border-white/30"
+      >
+        <option value="dr-desc">DR high → low</option>
+        <option value="dr-asc">DR low → high</option>
+        <option value="trend-desc">Biggest recent movers</option>
+        <option value="updated-desc">Recently checked</option>
+        <option value="name-asc">A → Z</option>
+      </select>
+      <div className="flex-1" />
+      <div className="text-xs text-zinc-500 hidden md:block pr-1">
+        {state.filteredAndSorted.length} of your sites shown • Global data is shared
+      </div>
+    </div>
+  );
+}
+
+function GlobalExamplesSection({ state }: { state: DrankState }) {
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold tracking-wider text-emerald-400/90">
+            GLOBAL EXAMPLES
+          </div>
+          <div className="text-xs text-white/50">
+            Shared historical DR data for everyone • updated weekly via GitHub Action
+          </div>
+        </div>
+        <div className="text-xs text-white/40 tabular-nums">
+          {state.liveGlobalDomains.length} sites • last shared update (live)
+        </div>
+      </div>
+      <div
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-10"
+        style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 3400px' }}
+      >
+        <AnimatePresence>
+          {state.liveGlobalDomains.map((d) => (
+            <DomainCard
+              key={`global-${d.domain}`}
+              d={d}
+              isCustom={false}
+              isUpdating={state.updating.has(d.domain)}
+              onOpen={state.openGlobalDomain}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+    </>
+  );
+}
+
+function LeaderboardSection({ state }: { state: DrankState }) {
+  return (
+    <>
+      <div className="mb-4 flex items-end justify-between">
+        <div>
+          <div className="text-sm font-semibold tracking-wider text-white">CURRENT LEADERBOARD</div>
+          <div className="text-xs text-white/50">
+            Ranked by Domain Rating • shared across all users from the GitHub-maintained JSON
+          </div>
+        </div>
+        {state.predictionAccuracy != null && (
+          <div className="text-right text-xs">
+            <span className="text-emerald-400 font-medium">Your prediction accuracy:</span>{' '}
+            {state.predictionAccuracy.hits}/{state.predictionAccuracy.total} in Top 20 (
+            {state.predictionAccuracy.percent}%)
+          </div>
+        )}
+      </div>
+      <Leaderboard
+        leaderboard={state.leaderboard}
+        onOpen={state.openGlobalDomain}
+        onAddPrediction={state.addPrediction}
+      />
+      <PredictionsPanel
+        predictions={state.predictions}
+        nominate={{ input: state.nominateInput, set: state.setNominateInput }}
+        onNominate={state.addPrediction}
+        onRemovePrediction={state.removePrediction}
+        leaderboard={state.leaderboard}
+      />
+      <CommunityNominations
+        nominations={state.liveCommunityNoms}
+        onOpen={state.openGlobalDomain}
+        onAddPrediction={state.addPrediction}
+      />
+    </>
+  );
+}
+
+function YourSitesSection({ state }: { state: DrankState }) {
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold tracking-wider text-white">YOUR SITES</div>
+          <div className="text-xs text-emerald-400/80">
+            Private • stored in your browser • auto-refreshed ~weekly when you visit
+          </div>
+        </div>
+        <div className="text-xs text-white/40">{state.customCount} tracked</div>
+      </div>
+      {state.filteredAndSorted.length > 0 ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <AnimatePresence>
+            {state.filteredAndSorted.map((d) => (
+              <DomainCard
+                key={d.domain}
+                d={d}
+                isCustom={true}
+                isUpdating={state.updating.has(d.domain)}
+                onOpen={state.openUserDomain}
+                actions={{ onRefresh: state.refreshDomain, onRemove: state.removeDomain }}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <div className="rounded-3xl border border-white/10 bg-zinc-900/50 p-8 text-center mb-8">
+          <div className="text-lg font-medium text-white">
+            No sites in your personal tracking yet
+          </div>
+          <p className="mt-2 text-sm text-white/60 max-w-sm mx-auto">
+            Add domains above. They will be stored privately in your browser and can auto-refresh
+            roughly once a week the next time you open this dashboard.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Footer() {
+  return (
+    <div className="mt-10 text-center text-[11px] text-white/40">
+      No account. No personal-domain database. Your domains, history, and generated advice stay in
+      this browser.
+      <br className="mb-1" />
+      <span className="text-white/25">DR data via Ahrefs free public API · </span>
+      <a
+        href="https://highsignal.app/domains"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline text-white/30 hover:text-white/50"
+      >
+        also in highsignal.app
+      </a>
+      <span className="text-white/20"> · </span>
+      <a href="/changelog" className="underline text-white/30 hover:text-white/50">
+        changelog
+      </a>
+      <span className="text-white/20"> · </span>
+      <a
+        href="https://github.com/sass-maker/drank/issues"
+        className="underline text-white/30 hover:text-white/50"
+      >
+        roadmap
+      </a>
+      <span className="text-white/20"> · </span>
+      <a
+        href="https://github.com/sass-maker/drank"
+        className="underline text-white/30 hover:text-white/50"
+      >
+        source
+      </a>
+    </div>
+  );
+}
+
+function DashboardContent({ state }: { state: DrankState }) {
+  return (
+    <>
+      <StatsBar
+        stats={state.stats}
+        customCount={state.customCount}
+        liveGlobalDomains={state.liveGlobalDomains}
+      />
+      <AddDomainBar state={state} />
+      <SearchControls state={state} />
+      <GlobalExamplesSection state={state} />
+      <LeaderboardSection state={state} />
+      <YourSitesSection state={state} />
+      <GainersLosers domains={state.liveGlobalDomains} onOpen={state.openGlobalDomain} />
+      <Footer />
+    </>
+  );
+}
+
 export default function Drank() {
-  const {
-    filteredAndSorted: filteredUser,
-    isLoading,
-    updating,
-    search,
-    setSearch,
-    sortMode,
-    setSortMode,
-    toasts,
-    dismissToast,
-    addDomain,
-    refreshDomain,
-    refreshAll,
-    removeDomain,
-    clearAll,
-    selectedDomain,
-    selectDomain,
-    getDomain: getUserDomain,
-    exportData,
-    importData,
-    stats,
-    // Weekly auto for YOUR sites only
-    autoRefreshEnabled,
-    lastAutoRefresh,
-    toggleAutoRefresh,
-    runAutoRefreshNow,
-    customCount,
-
-    // Predictions / submit for top
-    predictions,
-    addPrediction,
-    removePrediction,
-  } = useTrackedDomains();
-
-  // Live global data state (starts from static build import, refreshed from GitHub raw on client)
-  const [liveGlobalDomains, setLiveGlobalDomains] = useState<TrackedDomain[]>(GLOBAL_DOMAINS);
-  const [liveCommunityNoms, setLiveCommunityNoms] = useState<any[]>(COMMUNITY_NOMINATIONS);
-  const [belowFold, setBelowFold] = useState(false);
-
-  useEffect(() => {
-    // Fade out the LCP shell smoothly instead of instant removal.
-    // The shell is a fixed overlay (see layout.tsx) so it never affected
-    // document flow — fading it out causes zero layout shift.
-    const shell = document.getElementById('drank-lcp-shell');
-    if (shell) {
-      shell.classList.add('drank-lcp-fading');
-      const removeShell = () => shell.remove();
-      shell.addEventListener('transitionend', removeShell, { once: true });
-      // Fallback in case transitionend doesn't fire
-      setTimeout(removeShell, 300);
-    }
-    const run = () => setBelowFold(true);
-    if ('requestIdleCallback' in window) {
-      const id = requestIdleCallback(run, { timeout: 1200 });
-      return () => cancelIdleCallback(id);
-    }
-    const t = setTimeout(run, 0);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Refresh observations from the public static export. The domain list stays
-  // build-pinned so a private repository URL is never fetched by browsers.
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const drResponse = await fetch(GLOBAL_DR_URL, { cache: 'no-store' });
-        if (cancelled || !drResponse.ok) return;
-
-        const freshDr = await drResponse.json();
-
-        const domainsObj = freshDr.domains || {};
-        const freshDomains: TrackedDomain[] = (globalSitesStatic as string[]).map(
-          (domain: string) => {
-            const hist = domainsObj[domain]?.history || [];
-            return {
-              domain,
-              history: hist,
-              lastChecked: hist.length > 0 ? hist[hist.length - 1].ts : null,
-              isCustom: false,
-            };
-          }
-        );
-
-        setLiveGlobalDomains(freshDomains);
-        setLiveCommunityNoms(freshDr.communityNominations || []);
-      } catch {
-        // graceful fallback to the data bundled at build time
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Helper: resolve a domain record preferring global shared data, then user local
-  const getDomainRecord = (domain: string): TrackedDomain | undefined => {
-    const global = liveGlobalDomains.find((d) => d.domain === domain);
-    if (global) return global;
-
-    return getUserDomain(domain);
-  };
-
-  // Leaderboard: global examples ranked by current DR (shared data, can be live)
-  const leaderboard = React.useMemo(() => {
-    return [...liveGlobalDomains]
-      .map((d) => ({ ...d, currentDR: getCurrentDR(d) }))
-      .sort((a, b) => (b.currentDR ?? -1) - (a.currentDR ?? -1));
-  }, [liveGlobalDomains]);
-
-  // My predictions accuracy (how many of user's predicted sites are actually high in the real shared leaderboard)
-  const predictionAccuracy = React.useMemo(() => {
-    if (predictions.length === 0) return null;
-    const top20Domains = new Set(leaderboard.slice(0, 20).map((d) => d.domain));
-    const hits = predictions.filter((p) => top20Domains.has(p.domain)).length;
-    return {
-      hits,
-      total: predictions.length,
-      percent: Math.round((hits / predictions.length) * 100),
-    };
-  }, [predictions, leaderboard]);
-
-  const [addInput, setAddInput] = useState('');
-  const [nominateInput, setNominateInput] = useState('');
-  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
-  const [_importing, setImporting] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [selectedSource, setSelectedSource] = useState<'global' | 'user' | null>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const addInputRef = useRef<HTMLInputElement>(null);
-
-  const selected = selectedDomain
-    ? selectedSource === 'user'
-      ? (getUserDomain(selectedDomain) ?? null)
-      : (getDomainRecord(selectedDomain) ?? null)
-    : null;
-  const selectedCurrentDr = selected ? getCurrentDR(selected) : null;
-  const selectedTrend = selected ? getTrend(selected) : null;
-  const selectedAdvisorRequest =
-    selected && selectedCurrentDr !== null
-      ? {
-          domain: selected.domain,
-          currentDr: selectedCurrentDr,
-          trend: {
-            direction: selectedTrend?.direction ?? ('unknown' as const),
-            delta: selectedTrend?.delta ?? null,
-            periodDays:
-              selected.history.length >= 2
-                ? Math.max(
-                    1,
-                    Math.min(
-                      365,
-                      Math.round(
-                        (selected.history[selected.history.length - 1].ts -
-                          selected.history[selected.history.length - 2].ts) /
-                          86_400_000
-                      )
-                    )
-                  )
-                : null,
-          },
-        }
-      : null;
-
-  const openGlobalDomain = (domain: string) => {
-    setSelectedSource('global');
-    selectDomain(domain);
-  };
-
-  const openUserDomain = (domain: string) => {
-    setSelectedSource('user');
-    selectDomain(domain);
-  };
-
-  const closeSelectedDomain = () => {
-    setSelectedSource(null);
-    selectDomain(null);
-  };
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const onKey = createKeyboardHandler({
-      showSettings,
-      selectedDomain,
-      closeSelectedDomain,
-      toggleSettings: () => setShowSettings((v) => !v),
-      addInputRef,
-    });
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [selectedDomain, showSettings, closeSelectedDomain]);
-
-  const handleAdd = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!addInput.trim()) return;
-    await addDomain(addInput);
-    setAddInput('');
-  };
-
-  const handleRefreshAll = async () => {
-    setIsRefreshingAll(true);
-    await refreshAll();
-    setIsRefreshingAll(false);
-  };
-
-  const handleImportClick = () => fileInputRef.current?.click();
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    await importData(file);
-    setImporting(false);
-    e.target.value = '';
-  };
-
-  // Note: Global data is now separate (GLOBAL_DOMAINS from shared JSON).
-  // User customs come from the hook (filteredUser). No more mixed displayDomains.
-
-  const nextAutoLabel = formatNextAuto(lastAutoRefresh, autoRefreshEnabled);
-
-  if (isLoading) {
+  const state = useDrankState();
+  if (state.isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
         <div className="flex items-center gap-3 text-sm text-zinc-400">
@@ -685,337 +1010,49 @@ export default function Drank() {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200" style={{ contain: 'layout' }}>
-      {/* Premium sticky header */}
-      <div className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/95 backdrop-blur-xl">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-zinc-950 shadow-inner">
-              <BarChart3 className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="font-semibold tracking-[-1.5px] text-2xl">drank</div>
-              <div className="text-[10px] text-zinc-500 -mt-1 font-mono">DOMAIN RATING WATCH</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 active:bg-white/5 transition"
-            >
-              <Settings className="h-4 w-4" />
-              <span className="hidden sm:inline">Settings</span>
-            </button>
-
-            <button
-              onClick={exportData}
-              className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-            >
-              <Download className="h-4 w-4" /> Export
-            </button>
-
-            <button
-              onClick={handleRefreshAll}
-              disabled={isRefreshingAll}
-              className="flex items-center gap-2 rounded-2xl bg-white px-5 py-2 text-sm font-medium text-zinc-950 hover:bg-zinc-200 active:bg-zinc-300 disabled:opacity-60 transition"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshingAll ? 'animate-spin' : ''}`} />
-              {isRefreshingAll ? 'Refreshing…' : 'Refresh all'}
-            </button>
-          </div>
-        </div>
-      </div>
-
+      <Header
+        onSettings={() => state.setShowSettings(true)}
+        onExport={state.exportData}
+        onRefreshAll={state.handleRefreshAll}
+        isRefreshingAll={state.isRefreshingAll}
+      />
       <div className="mx-auto max-w-7xl px-6 pt-10 pb-24">
-        {/* Hero */}
-        <div className="mb-10">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h1 className="text-[clamp(1.75rem,8.2vw,3.75rem)] leading-[1.05] font-semibold tracking-[-0.04em] text-white sm:leading-none sm:tracking-[-3.2px]">
-                Track Domain Ratings.
-                <br />
-                100% in your browser.
-              </h1>
-              <p className="mt-3 max-w-md text-xl text-zinc-400">
-                See the authority score of ~45 popular sites and your own — free Ahrefs API, no
-                sign-up. Your personal history stays in this browser.
-              </p>
-            </div>
-            <div className="hidden lg:block text-right text-sm text-zinc-500 max-w-[260px]">
-              Press <span className="font-mono rounded bg-white/10 px-1.5 py-px">/</span> to search
-              &nbsp;•&nbsp; <span className="font-mono rounded bg-white/10 px-1.5 py-px">A</span> to
-              add &nbsp;•&nbsp;{' '}
-              <span className="font-mono rounded bg-white/10 px-1.5 py-px">⌘S</span> settings
-            </div>
-          </div>
-        </div>
-
-        {!belowFold ? (
+        <Hero />
+        {state.belowFold ? (
+          <DashboardContent state={state} />
+        ) : (
           <div
             className="min-h-[65vh] rounded-3xl border border-white/5 bg-zinc-900/20"
             style={{ contain: 'layout' }}
             aria-hidden
           />
-        ) : (
-          <>
-            {/* Beautiful Bento Stats */}
-            <StatsBar
-              stats={stats}
-              customCount={customCount}
-              liveGlobalDomains={liveGlobalDomains}
-            />
-
-            {/* Add + Auto status bar */}
-            <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <form onSubmit={handleAdd} className="flex w-full max-w-xl items-center gap-2">
-                <div className="relative flex-1">
-                  <input
-                    ref={addInputRef}
-                    id="add-input"
-                    type="text"
-                    value={addInput}
-                    onChange={(e) => setAddInput(e.target.value)}
-                    placeholder="Add your domain (mysite.com, blog.example.com...)"
-                    className="w-full rounded-3xl border border-white/10 bg-zinc-900 px-5 py-3 text-sm placeholder:text-zinc-500 focus:border-white/30 focus:bg-zinc-950 focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-3xl bg-white px-8 text-sm font-medium text-zinc-950 transition active:scale-[0.985]"
-                >
-                  <Plus className="h-4 w-4" /> Add site
-                </button>
-              </form>
-
-              {/* Auto status — clickable to open settings */}
-              <button
-                onClick={() => setShowSettings(true)}
-                className="flex items-center gap-2 self-start rounded-3xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 transition"
-              >
-                <Calendar className="h-4 w-4 text-emerald-400" />
-                <span className="font-medium text-emerald-400">{nextAutoLabel}</span>
-                <span className="text-white/40">•</span>
-                <span className="text-xs text-white/60">
-                  {autoRefreshEnabled ? `${customCount} sites` : 'disabled'}
-                </span>
-              </button>
-            </div>
-
-            {/* Controls */}
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-zinc-500" />
-                <input
-                  id="search-input"
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search domains…"
-                  className="w-full rounded-3xl border border-white/10 bg-zinc-900 pl-10 py-2.5 text-sm placeholder:text-zinc-500 focus:border-white/30"
-                />
-              </div>
-
-              <select
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as any)}
-                className="h-11 rounded-3xl border border-white/10 bg-zinc-900 px-4 text-sm focus:border-white/30"
-              >
-                <option value="dr-desc">DR high → low</option>
-                <option value="dr-asc">DR low → high</option>
-                <option value="trend-desc">Biggest recent movers</option>
-                <option value="updated-desc">Recently checked</option>
-                <option value="name-asc">A → Z</option>
-              </select>
-
-              <div className="flex-1" />
-
-              <div className="text-xs text-zinc-500 hidden md:block pr-1">
-                {filteredUser.length} of your sites shown • Global data is shared
-              </div>
-            </div>
-
-            {/* ==================== GLOBAL EXAMPLES (SHARED) ==================== */}
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold tracking-wider text-emerald-400/90">
-                  GLOBAL EXAMPLES
-                </div>
-                <div className="text-xs text-white/50">
-                  Shared historical DR data for everyone • updated weekly via GitHub Action
-                </div>
-              </div>
-              <div className="text-xs text-white/40 tabular-nums">
-                {liveGlobalDomains.length} sites • last shared update (live)
-              </div>
-            </div>
-
-            <div
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-10"
-              style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 3400px' }}
-            >
-              <AnimatePresence>
-                {liveGlobalDomains.map((d) => (
-                  <DomainCard
-                    key={`global-${d.domain}`}
-                    d={d}
-                    isCustom={false}
-                    isUpdating={updating.has(d.domain)}
-                    onOpen={openGlobalDomain}
-                  />
-                ))}
-              </AnimatePresence>
-            </div>
-
-            {/* ==================== LEADERBOARD (from shared global data) + PREDICT THE TOP ==================== */}
-            <div className="mb-4 flex items-end justify-between">
-              <div>
-                <div className="text-sm font-semibold tracking-wider text-white">
-                  CURRENT LEADERBOARD
-                </div>
-                <div className="text-xs text-white/50">
-                  Ranked by Domain Rating • shared across all users from the GitHub-maintained JSON
-                </div>
-              </div>
-              {predictionAccuracy && (
-                <div className="text-right text-xs">
-                  <span className="text-emerald-400 font-medium">Your prediction accuracy:</span>{' '}
-                  {predictionAccuracy.hits}/{predictionAccuracy.total} in Top 20 (
-                  {predictionAccuracy.percent}%)
-                </div>
-              )}
-            </div>
-
-            {/* Dense beautiful leaderboard */}
-            <Leaderboard
-              leaderboard={leaderboard}
-              onOpen={openGlobalDomain}
-              onAddPrediction={addPrediction}
-            />
-
-            {/* My Predictions / Submit for the top */}
-            <PredictionsPanel
-              predictions={predictions}
-              nominate={{ input: nominateInput, set: setNominateInput }}
-              onNominate={addPrediction}
-              onRemovePrediction={removePrediction}
-              leaderboard={leaderboard}
-            />
-
-            {/* Also show community nominations from the shared data if any */}
-            <CommunityNominations
-              nominations={liveCommunityNoms}
-              onOpen={openGlobalDomain}
-              onAddPrediction={addPrediction}
-            />
-
-            {/* ==================== YOUR SITES (LOCAL + AUTO) ==================== */}
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold tracking-wider text-white">YOUR SITES</div>
-                <div className="text-xs text-emerald-400/80">
-                  Private • stored in your browser • auto-refreshed ~weekly when you visit
-                </div>
-              </div>
-              <div className="text-xs text-white/40">{customCount} tracked</div>
-            </div>
-
-            {filteredUser.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                <AnimatePresence>
-                  {filteredUser.map((d) => (
-                    <DomainCard
-                      key={d.domain}
-                      d={d}
-                      isCustom={true}
-                      isUpdating={updating.has(d.domain)}
-                      onOpen={openUserDomain}
-                      actions={{ onRefresh: refreshDomain, onRemove: removeDomain }}
-                    />
-                  ))}
-                </AnimatePresence>
-              </div>
-            ) : (
-              <div className="rounded-3xl border border-white/10 bg-zinc-900/50 p-8 text-center mb-8">
-                <div className="text-lg font-medium text-white">
-                  No sites in your personal tracking yet
-                </div>
-                <p className="mt-2 text-sm text-white/60 max-w-sm mx-auto">
-                  Add domains above. They will be stored privately in your browser and can
-                  auto-refresh roughly once a week the next time you open this dashboard.
-                </p>
-              </div>
-            )}
-
-            {/* Insights — Gainers / Losers from the shared global examples (the interesting public data) */}
-            <GainersLosers domains={liveGlobalDomains} onOpen={openGlobalDomain} />
-
-            <div className="mt-10 text-center text-[11px] text-white/40">
-              No account. No personal-domain database. Your domains, history, and generated advice
-              stay in this browser.
-              <br className="mb-1" />
-              <span className="text-white/25">DR data via Ahrefs free public API · </span>
-              <a
-                href="https://highsignal.app/domains"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline text-white/30 hover:text-white/50"
-              >
-                also in highsignal.app
-              </a>
-              <span className="text-white/20"> · </span>
-              <a href="/changelog" className="underline text-white/30 hover:text-white/50">
-                changelog
-              </a>
-              <span className="text-white/20"> · </span>
-              <a
-                href="https://github.com/sass-maker/drank/issues"
-                className="underline text-white/30 hover:text-white/50"
-              >
-                roadmap
-              </a>
-              <span className="text-white/20"> · </span>
-              <a
-                href="https://github.com/sass-maker/drank"
-                className="underline text-white/30 hover:text-white/50"
-              >
-                source
-              </a>
-            </div>
-          </>
         )}
       </div>
-
-      {/* ==================== DETAIL MODAL (more beautiful) ==================== */}
       <DomainDetailModal
-        selected={selected}
-        onClose={closeSelectedDomain}
-        advisorRequest={selectedAdvisorRequest}
-        updating={updating}
-        onRefresh={refreshDomain}
-        onRemove={removeDomain}
+        selected={state.selected}
+        onClose={state.closeSelectedDomain}
+        advisorRequest={state.selectedAdvisorRequest}
+        updating={state.updating}
+        onRefresh={state.refreshDomain}
+        onRemove={state.removeDomain}
       />
-
-      {/* ==================== SETTINGS / PREFERENCES (the "cron" controls) ==================== */}
       <SettingsPanel
-        showSettings={showSettings}
-        onClose={() => setShowSettings(false)}
-        autoRefreshEnabled={autoRefreshEnabled}
-        toggleAutoRefresh={toggleAutoRefresh}
-        lastAutoRefresh={lastAutoRefresh}
-        nextAutoLabel={nextAutoLabel}
-        runAutoRefreshNow={runAutoRefreshNow}
-        onImportClick={handleImportClick}
-        onExport={exportData}
-        onClearAll={clearAll}
-        onFileChange={handleFileChange}
-        fileInputRef={fileInputRef}
+        showSettings={state.showSettings}
+        onClose={() => state.setShowSettings(false)}
+        autoRefreshEnabled={state.autoRefreshEnabled}
+        toggleAutoRefresh={state.toggleAutoRefresh}
+        lastAutoRefresh={state.lastAutoRefresh}
+        nextAutoLabel={state.nextAutoLabel}
+        runAutoRefreshNow={state.runAutoRefreshNow}
+        onImportClick={state.handleImportClick}
+        onExport={state.exportData}
+        onClearAll={state.clearAll}
+        onFileChange={state.handleFileChange}
+        fileInputRef={state.fileInputRef}
       />
-
-      {/* Beautiful toasts */}
-      <ToastStack toasts={toasts} dismissToast={dismissToast} />
+      <ToastStack toasts={state.toasts} dismissToast={state.dismissToast} />
     </div>
   );
 }

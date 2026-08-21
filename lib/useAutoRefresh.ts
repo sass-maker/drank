@@ -24,6 +24,48 @@ interface UseAutoRefreshArgs {
   };
 }
 
+function persistAutoRefresh(
+  domainsRef: React.RefObject<TrackedDomain[]>,
+  persistContext: UseAutoRefreshArgs['persistContext'],
+  autoRefreshEnabled: boolean,
+  lastAutoRefresh: number | null
+) {
+  saveState({
+    version: 2,
+    domains: domainsRef.current,
+    lastGlobalRefresh: persistContext.lastGlobalRefresh,
+    autoRefreshEnabled,
+    lastAutoRefresh,
+    predictions: persistContext.predictions,
+  });
+}
+
+function useAutoRefreshTriggers(isLoading: boolean, checkAndTriggerAuto: () => Promise<void>) {
+  useEffect(() => {
+    if (isLoading) return;
+    const t = setTimeout(() => checkAndTriggerAuto(), 650);
+    return () => clearTimeout(t);
+  }, [isLoading, checkAndTriggerAuto]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') checkAndTriggerAuto();
+    };
+    const onFocus = () => checkAndTriggerAuto();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [checkAndTriggerAuto]);
+
+  useEffect(() => {
+    const id = setInterval(() => checkAndTriggerAuto(), 3 * 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [checkAndTriggerAuto]);
+}
+
 export function useAutoRefresh({
   domainsRef,
   isLoading,
@@ -49,23 +91,12 @@ export function useAutoRefresh({
       return;
     }
     autoRefreshInFlightRef.current = true;
-
     showToast(`Auto-refreshing ${customDomains.length} of your sites...`, 'info');
-
     try {
       await refreshDomains(customDomains);
-
       const ts = Date.now();
       setLastAutoRefresh(ts);
-
-      saveState({
-        version: 2,
-        domains: domainsRef.current,
-        lastGlobalRefresh: persistContext.lastGlobalRefresh,
-        autoRefreshEnabled,
-        lastAutoRefresh: ts,
-        predictions: persistContext.predictions,
-      });
+      persistAutoRefresh(domainsRef, persistContext, autoRefreshEnabled, ts);
       showToast('Weekly auto-refresh complete for your sites', 'success');
     } finally {
       autoRefreshInFlightRef.current = false;
@@ -74,65 +105,19 @@ export function useAutoRefresh({
 
   const checkAndTriggerAuto = useCallback(async () => {
     if (!autoRefreshEnabled) return;
-
     const last = lastAutoRefresh;
-    const now = Date.now();
-
-    if (!last || now - last > WEEK_MS) {
-      const hasCustom = domainsRef.current.some((d) => d.isCustom);
-      if (!hasCustom) return;
-
+    if (!last || Date.now() - last > WEEK_MS) {
+      if (!domainsRef.current.some((d) => d.isCustom)) return;
       await runAutoRefreshNow();
     }
   }, [autoRefreshEnabled, lastAutoRefresh, runAutoRefreshNow, domainsRef]);
 
-  useEffect(() => {
-    if (isLoading) return;
-    const t = setTimeout(() => {
-      checkAndTriggerAuto();
-    }, 650);
-    return () => clearTimeout(t);
-  }, [isLoading, checkAndTriggerAuto]);
-
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        checkAndTriggerAuto();
-      }
-    };
-    const onFocus = () => checkAndTriggerAuto();
-
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onFocus);
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [checkAndTriggerAuto]);
-
-  useEffect(() => {
-    const id = setInterval(
-      () => {
-        checkAndTriggerAuto();
-      },
-      3 * 60 * 60 * 1000
-    );
-    return () => clearInterval(id);
-  }, [checkAndTriggerAuto]);
+  useAutoRefreshTriggers(isLoading, checkAndTriggerAuto);
 
   const toggleAutoRefresh = useCallback(
     (enabled: boolean) => {
       setAutoRefreshEnabled(enabled);
-      const currentDomains = domainsRef.current;
-      saveState({
-        version: 2,
-        domains: currentDomains,
-        lastGlobalRefresh: persistContext.lastGlobalRefresh,
-        autoRefreshEnabled: enabled,
-        lastAutoRefresh,
-        predictions: persistContext.predictions,
-      });
+      persistAutoRefresh(domainsRef, persistContext, enabled, lastAutoRefresh);
       showToast(
         enabled ? 'Weekly auto-refresh enabled for your sites' : 'Weekly auto-refresh disabled',
         'info'

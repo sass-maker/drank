@@ -65,14 +65,55 @@ interface UseTrackedDomainsReturn {
   removePrediction: (domain: string) => void;
 }
 
-export function useTrackedDomains(): UseTrackedDomainsReturn {
+type PersistFn = (
+  nextDomains: TrackedDomain[],
+  nextLastGlobal?: number | null,
+  nextPreds?: Prediction[]
+) => void;
+
+function buildStoredState(
+  domains: TrackedDomain[],
+  lastGlobalRefresh: number | null,
+  autoRefreshEnabled: boolean,
+  lastAutoRefresh: number | null,
+  predictions: Prediction[]
+): StoredState {
+  return {
+    version: 2,
+    domains,
+    lastGlobalRefresh,
+    autoRefreshEnabled,
+    lastAutoRefresh,
+    predictions,
+  } as StoredState;
+}
+
+function useToasts() {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdRef = useRef(1);
+  const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+    const id = toastIdRef.current++;
+    setToasts((t) => [...t, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((current) => current.filter((tt) => tt.id !== id));
+    }, 4200);
+  }, []);
+  const dismissToast = useCallback((id: number) => {
+    setToasts((t) => t.filter((tt) => tt.id !== id));
+  }, []);
+  return { toasts, showToast, dismissToast };
+}
+
+interface DomainStateCtx {
+  showToast: (message: string, type: Toast['type']) => void;
+}
+
+function useDomainState(ctx: DomainStateCtx) {
+  const { showToast } = ctx;
   const [domains, setDomains] = useState<TrackedDomain[]>(() => {
     const stored = loadState();
     if (stored?.domains?.length) {
-      return stored.domains.map((d) => ({
-        ...d,
-        isCustom: true,
-      }));
+      return stored.domains.map((d) => ({ ...d, isCustom: true }));
     }
     return [];
   });
@@ -82,86 +123,154 @@ export function useTrackedDomains(): UseTrackedDomainsReturn {
   );
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('dr-desc');
-  const [toasts, setToasts] = useState<Toast[]>([]);
   const [updating, setUpdating] = useState<Set<string>>(new Set());
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [isLoading] = useState(false);
 
-  const toastIdRef = useRef(1);
+  const persistRef = useRef<PersistFn>(() => {});
   const applyNewPointRef = useRef<(domain: string, dr: number, fetchedAt: number) => void>(
     () => {}
   );
-
-  const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
-    const id = toastIdRef.current++;
-    setToasts((t) => [...t, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((current) => current.filter((tt) => tt.id !== id));
-    }, 4200);
-  }, []);
-
-  const dismissToast = useCallback((id: number) => {
-    setToasts((t) => t.filter((tt) => tt.id !== id));
-  }, []);
 
   useEffect(() => {
     domainsRef.current = domains;
     const stored = loadState();
     if (!stored) {
-      saveState({
-        version: 2,
-        domains: [],
-        lastGlobalRefresh: null,
-        autoRefreshEnabled: true,
-        lastAutoRefresh: null,
-        predictions: [],
-      });
+      saveState(buildStoredState([], null, true, null, []));
     }
   }, [domains]);
 
-  // Predictions sub-hook (called early so its state is available below)
-  const { predictions, setPredictions, addPrediction, removePrediction } = usePredictions({
-    initialPredictions: loadState()?.predictions || [],
-    domainsRef,
-    persistContext: {
-      lastGlobalRefresh,
-      autoRefreshEnabled: loadState()?.autoRefreshEnabled ?? true,
-      lastAutoRefresh: loadState()?.lastAutoRefresh ?? null,
-    },
-    showToast,
-  });
+  const updateDomains = useCallback((updater: (prev: TrackedDomain[]) => TrackedDomain[]) => {
+    setDomains((prev) => {
+      const next = updater(prev);
+      domainsRef.current = next;
+      persistRef.current(next);
+      return next;
+    });
+  }, []);
 
-  // Shared refresh logic used by both the hook and the auto-refresh sub-hook.
-  // Uses a ref to applyNewPoint to break the circular dependency.
+  const applyNewPoint = useCallback(
+    (domain: string, dr: number, fetchedAt: number) => {
+      updateDomains((prev) =>
+        prev.map((d) => {
+          if (d.domain !== domain) return d;
+          const point: HistoryPoint = { ts: fetchedAt, dr };
+          const newHistory = [...d.history.filter((p) => p.ts !== point.ts), point].sort(
+            (a, b) => a.ts - b.ts
+          );
+          return { ...d, history: newHistory, lastChecked: fetchedAt };
+        })
+      );
+    },
+    [updateDomains]
+  );
+
+  useEffect(() => {
+    applyNewPointRef.current = applyNewPoint;
+  }, [applyNewPoint]);
+
+  const refreshDomain = useCallback(
+    async (domain: string) => {
+      setUpdating((u) => new Set(u).add(domain));
+      const result = await fetchDomainRating(domain);
+      setUpdating((u) => {
+        const next = new Set(u);
+        next.delete(domain);
+        return next;
+      });
+      if ('error' in result) {
+        showToast(`${domain}: ${result.error}`, 'error');
+        return;
+      }
+      applyNewPoint(domain, result.dr, result.fetchedAt);
+    },
+    [showToast, applyNewPoint]
+  );
+
+  const selectDomain = useCallback((domain: string | null) => {
+    setSelectedDomain(domain);
+  }, []);
+
+  const getDomain = useCallback(
+    (domain: string) => domains.find((d) => d.domain === domain),
+    [domains]
+  );
+
+  const filteredAndSorted = useMemo(() => {
+    let result = domains;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter((d) => d.domain.includes(q));
+    }
+    return sortDomains(result, sortMode);
+  }, [domains, search, sortMode]);
+
+  const stats = useMemo(() => calculateStats(domains), [domains]);
+
+  return {
+    domains,
+    domainsRef,
+    updating,
+    setUpdating,
+    selectedDomain,
+    setSelectedDomain,
+    lastGlobalRefresh,
+    setLastGlobalRefresh,
+    search,
+    setSearch,
+    sortMode,
+    setSortMode,
+    isLoading,
+    updateDomains,
+    applyNewPoint,
+    applyNewPointRef,
+    persistRef,
+    refreshDomain,
+    setDomains,
+    selectDomain,
+    getDomain,
+    filteredAndSorted,
+    stats,
+  };
+}
+
+interface DomainRefreshCtx {
+  domainsRef: React.RefObject<TrackedDomain[]>;
+  setUpdating: React.Dispatch<React.SetStateAction<Set<string>>>;
+  showToast: (message: string, type: Toast['type']) => void;
+  isLoading: boolean;
+  predictions: Prediction[];
+  lastGlobalRefresh: number | null;
+  setLastGlobalRefresh: (n: number) => void;
+  applyNewPointRef: React.RefObject<(domain: string, dr: number, fetchedAt: number) => void>;
+  persistRef: React.RefObject<PersistFn>;
+}
+
+function useDomainRefresh(ctx: DomainRefreshCtx) {
   const refreshDomains = useCallback(
     async (targets: TrackedDomain[]) => {
       for (let i = 0; i < targets.length; i++) {
         const target = targets[i];
-        setUpdating((current) => new Set(current).add(target.domain));
-
+        ctx.setUpdating((current) => new Set(current).add(target.domain));
         const result = await fetchDomainRating(target.domain);
-
-        setUpdating((current) => {
+        ctx.setUpdating((current) => {
           const next = new Set(current);
           next.delete(target.domain);
           return next;
         });
-
         if ('error' in result) {
-          showToast(`${target.domain}: ${result.error}`, 'error');
+          ctx.showToast(`${target.domain}: ${result.error}`, 'error');
         } else {
-          applyNewPointRef.current(target.domain, result.dr, result.fetchedAt);
+          ctx.applyNewPointRef.current(target.domain, result.dr, result.fetchedAt);
         }
-
         if (i < targets.length - 1) {
           await new Promise((resolveDelay) => setTimeout(resolveDelay, REFRESH_DELAY_MS));
         }
       }
     },
-    [showToast]
+    [ctx]
   );
 
-  // Auto-refresh sub-hook
   const {
     autoRefreshEnabled,
     setAutoRefreshEnabled,
@@ -171,97 +280,92 @@ export function useTrackedDomains(): UseTrackedDomainsReturn {
     runAutoRefreshNow,
     customCount,
   } = useAutoRefresh({
-    domainsRef,
-    isLoading,
+    domainsRef: ctx.domainsRef,
+    isLoading: ctx.isLoading,
     initial: {
       autoRefreshEnabled: loadState()?.autoRefreshEnabled ?? true,
       lastAutoRefresh: loadState()?.lastAutoRefresh ?? null,
     },
-    persistContext: {
-      lastGlobalRefresh,
-      predictions,
-    },
-    callbacks: {
-      showToast,
-      refreshDomains,
-    },
+    persistContext: { lastGlobalRefresh: ctx.lastGlobalRefresh, predictions: ctx.predictions },
+    callbacks: { showToast: ctx.showToast, refreshDomains },
   });
 
   const persist = useCallback(
-    (nextDomains: TrackedDomain[], nextLastGlobal?: number | null, nextPreds?: any) => {
-      const state: StoredState = {
-        version: 2,
-        domains: nextDomains,
-        lastGlobalRefresh: nextLastGlobal !== undefined ? nextLastGlobal : lastGlobalRefresh,
-        autoRefreshEnabled,
-        lastAutoRefresh,
-        predictions: nextPreds !== undefined ? nextPreds : predictions,
-      } as any;
-      saveState(state);
-    },
-    [lastGlobalRefresh, autoRefreshEnabled, lastAutoRefresh, predictions]
-  );
-
-  const updateDomains = useCallback(
-    (updater: (prev: TrackedDomain[]) => TrackedDomain[]) => {
-      setDomains((prev) => {
-        const next = updater(prev);
-        domainsRef.current = next;
-        persist(next);
-        return next;
-      });
-    },
-    [persist]
-  );
-
-  const applyNewPoint = useCallback(
-    (domain: string, dr: number, fetchedAt: number) => {
-      updateDomains((prev) =>
-        prev.map((d) => {
-          if (d.domain !== domain) return d;
-
-          const point: HistoryPoint = { ts: fetchedAt, dr };
-          const newHistory = [...d.history.filter((p) => p.ts !== point.ts), point].sort(
-            (a, b) => a.ts - b.ts
-          );
-
-          return {
-            ...d,
-            history: newHistory,
-            lastChecked: fetchedAt,
-          };
-        })
+    (nextDomains: TrackedDomain[], nextLastGlobal?: number | null, nextPreds?: Prediction[]) => {
+      saveState(
+        buildStoredState(
+          nextDomains,
+          nextLastGlobal !== undefined ? nextLastGlobal : ctx.lastGlobalRefresh,
+          autoRefreshEnabled,
+          lastAutoRefresh,
+          nextPreds !== undefined ? nextPreds : ctx.predictions
+        )
       );
     },
-    [updateDomains]
+    [ctx, autoRefreshEnabled, lastAutoRefresh]
   );
 
-  // Keep the ref in sync so refreshDomains (which is stable) can call the latest applyNewPoint
   useEffect(() => {
-    applyNewPointRef.current = applyNewPoint;
-  }, [applyNewPoint]);
+    ctx.persistRef.current = persist;
+  }, [ctx, persist]);
 
-  const refreshDomain = useCallback(
-    async (domain: string) => {
-      setUpdating((u) => new Set(u).add(domain));
+  const refreshAll = useCallback(async () => {
+    const domains = ctx.domainsRef.current;
+    if (domains.length === 0) return;
+    ctx.showToast(
+      `Refreshing ${domains.length} domains... (this may take ~${Math.ceil((domains.length * REFRESH_DELAY_MS) / 1000)}s)`,
+      'info'
+    );
+    await refreshDomains([...domains]);
+    const now = Date.now();
+    ctx.setLastGlobalRefresh(now);
+    persist(ctx.domainsRef.current, now, ctx.predictions);
+    ctx.showToast('Refresh complete', 'success');
+  }, [ctx, persist, refreshDomains]);
 
-      const result = await fetchDomainRating(domain);
+  return {
+    refreshDomains,
+    refreshAll,
+    autoRefreshEnabled,
+    setAutoRefreshEnabled,
+    lastAutoRefresh,
+    setLastAutoRefresh,
+    toggleAutoRefresh,
+    runAutoRefreshNow,
+    customCount,
+  };
+}
 
-      setUpdating((u) => {
-        const next = new Set(u);
-        next.delete(domain);
-        return next;
-      });
+interface DomainMutationsCtx {
+  domains: TrackedDomain[];
+  domainsRef: React.RefObject<TrackedDomain[]>;
+  updateDomains: (updater: (prev: TrackedDomain[]) => TrackedDomain[]) => void;
+  selectedDomain: string | null;
+  setSelectedDomain: (domain: string | null) => void;
+  showToast: (message: string, type: Toast['type']) => void;
+  refreshDomain: (domain: string) => Promise<void>;
+  setLastGlobalRefresh: (n: number | null) => void;
+  setLastAutoRefresh: (n: number | null) => void;
+  setAutoRefreshEnabled: (enabled: boolean) => void;
+  setPredictions: (preds: Prediction[]) => void;
+  setDomains: (domains: TrackedDomain[]) => void;
+}
 
-      if ('error' in result) {
-        showToast(`${domain}: ${result.error}`, 'error');
-        return;
-      }
-
-      applyNewPoint(domain, result.dr, result.fetchedAt);
-    },
-    [showToast, applyNewPoint]
-  );
+function useDomainMutations(ctx: DomainMutationsCtx) {
+  const {
+    domains,
+    domainsRef,
+    updateDomains,
+    selectedDomain,
+    setSelectedDomain,
+    showToast,
+    refreshDomain,
+    setLastGlobalRefresh,
+    setLastAutoRefresh,
+    setAutoRefreshEnabled,
+    setPredictions,
+    setDomains,
+  } = ctx;
 
   const addDomain = useCallback(
     async (input: string) => {
@@ -270,12 +374,10 @@ export function useTrackedDomains(): UseTrackedDomainsReturn {
         showToast('Please enter a valid domain (e.g. example.com)', 'error');
         return;
       }
-
       if (GLOBAL_SITE_SET.has(normalized)) {
         showToast(`${normalized} is already included in the shared examples`, 'info');
         return;
       }
-
       const existing = domains.find((d) => d.domain === normalized);
       if (existing) {
         showToast(`${normalized} is already tracked`, 'info');
@@ -283,39 +385,19 @@ export function useTrackedDomains(): UseTrackedDomainsReturn {
         await refreshDomain(normalized);
         return;
       }
-
       const newDomain: TrackedDomain = {
         domain: normalized,
         history: [],
         lastChecked: null,
         isCustom: true,
       };
-
       updateDomains((prev) => [...prev, newDomain]);
       showToast(`Added ${normalized}`, 'success');
-
       await refreshDomain(normalized);
       setSelectedDomain(normalized);
     },
-    [domains, refreshDomain, updateDomains, showToast]
+    [domains, refreshDomain, updateDomains, showToast, setSelectedDomain]
   );
-
-  const refreshAll = useCallback(async () => {
-    if (domains.length === 0) return;
-
-    showToast(
-      `Refreshing ${domains.length} domains... (this may take ~${Math.ceil((domains.length * REFRESH_DELAY_MS) / 1000)}s)`,
-      'info'
-    );
-
-    const sorted = [...domains];
-    await refreshDomains(sorted);
-
-    const now = Date.now();
-    setLastGlobalRefresh(now);
-    persist(domainsRef.current, now, predictions);
-    showToast('Refresh complete', 'success');
-  }, [domains, persist, showToast, predictions, refreshDomains]);
 
   const removeDomain = useCallback(
     (domain: string) => {
@@ -325,7 +407,7 @@ export function useTrackedDomains(): UseTrackedDomainsReturn {
       }
       showToast(`Removed ${domain}`, 'info');
     },
-    [updateDomains, selectedDomain, showToast]
+    [updateDomains, selectedDomain, showToast, setSelectedDomain]
   );
 
   const clearAll = useCallback(() => {
@@ -338,36 +420,59 @@ export function useTrackedDomains(): UseTrackedDomainsReturn {
     setSelectedDomain(null);
     setPredictions([]);
     setAutoRefreshEnabled(true);
-    saveState({
-      version: 2,
-      domains: empty,
-      lastGlobalRefresh: null,
-      autoRefreshEnabled: true,
-      lastAutoRefresh: null,
-      predictions: [],
-    } as any);
+    saveState(buildStoredState(empty, null, true, null, []));
     showToast('All data cleared', 'info');
-  }, [showToast]);
+  }, [
+    showToast,
+    setDomains,
+    domainsRef,
+    setLastGlobalRefresh,
+    setLastAutoRefresh,
+    setSelectedDomain,
+    setPredictions,
+    setAutoRefreshEnabled,
+  ]);
 
-  const selectDomain = useCallback((domain: string | null) => {
-    setSelectedDomain(domain);
-  }, []);
+  return { addDomain, removeDomain, clearAll };
+}
 
-  const getDomain = useCallback(
-    (domain: string) => domains.find((d) => d.domain === domain),
-    [domains]
-  );
+interface DomainIOCtx {
+  domains: TrackedDomain[];
+  lastGlobalRefresh: number | null;
+  autoRefreshEnabled: boolean;
+  lastAutoRefresh: number | null;
+  predictions: Prediction[];
+  showToast: (message: string, type: Toast['type']) => void;
+  setDomains: (domains: TrackedDomain[]) => void;
+  domainsRef: React.RefObject<TrackedDomain[]>;
+  setLastGlobalRefresh: (n: number | null) => void;
+  setAutoRefreshEnabled: (enabled: boolean) => void;
+  setLastAutoRefresh: (n: number | null) => void;
+  setSelectedDomain: (domain: string | null) => void;
+  setPredictions: (preds: Prediction[]) => void;
+}
+
+function useDomainIO(ctx: DomainIOCtx) {
+  const {
+    domains,
+    lastGlobalRefresh,
+    autoRefreshEnabled,
+    lastAutoRefresh,
+    predictions,
+    showToast,
+    setDomains,
+    domainsRef,
+    setLastGlobalRefresh,
+    setAutoRefreshEnabled,
+    setLastAutoRefresh,
+    setSelectedDomain,
+    setPredictions,
+  } = ctx;
 
   const exportData = useCallback(() => {
-    const state: StoredState = {
-      version: 2,
-      domains,
-      lastGlobalRefresh,
-      autoRefreshEnabled,
-      lastAutoRefresh,
-      predictions,
-    };
-    exportState(state);
+    exportState(
+      buildStoredState(domains, lastGlobalRefresh, autoRefreshEnabled, lastAutoRefresh, predictions)
+    );
     showToast('Exported JSON', 'success');
   }, [domains, lastGlobalRefresh, autoRefreshEnabled, lastAutoRefresh, predictions, showToast]);
 
@@ -378,78 +483,124 @@ export function useTrackedDomains(): UseTrackedDomainsReturn {
         showToast('Invalid or corrupted import file', 'error');
         return false;
       }
-
       const migrated = (parsed.domains || []).map((d: TrackedDomain) => ({
         ...d,
         isCustom: d.isCustom ?? true,
       }));
-
+      const importedPreds = (parsed as any).predictions || [];
       setDomains(migrated);
       domainsRef.current = migrated;
       setLastGlobalRefresh(parsed.lastGlobalRefresh ?? null);
       setAutoRefreshEnabled(parsed.autoRefreshEnabled ?? true);
       setLastAutoRefresh(parsed.lastAutoRefresh ?? null);
       setSelectedDomain(null);
-      const importedPreds = (parsed as any).predictions || [];
       setPredictions(importedPreds);
-
-      saveState({
-        version: 2,
-        domains: migrated,
-        lastGlobalRefresh: parsed.lastGlobalRefresh ?? null,
-        autoRefreshEnabled: parsed.autoRefreshEnabled ?? true,
-        lastAutoRefresh: parsed.lastAutoRefresh ?? null,
-        predictions: importedPreds,
-      } as any);
-
+      saveState(
+        buildStoredState(
+          migrated,
+          parsed.lastGlobalRefresh ?? null,
+          parsed.autoRefreshEnabled ?? true,
+          parsed.lastAutoRefresh ?? null,
+          importedPreds
+        )
+      );
       showToast(`Imported ${migrated.length} domains`, 'success');
       return true;
     },
-    [showToast]
+    [
+      showToast,
+      setDomains,
+      domainsRef,
+      setLastGlobalRefresh,
+      setAutoRefreshEnabled,
+      setLastAutoRefresh,
+      setSelectedDomain,
+      setPredictions,
+    ]
   );
 
-  const filteredAndSorted = useMemo(() => {
-    let result = domains;
+  return { exportData, importData };
+}
 
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      result = result.filter((d) => d.domain.includes(q));
-    }
+export function useTrackedDomains(): UseTrackedDomainsReturn {
+  const { showToast, toasts, dismissToast } = useToasts();
 
-    return sortDomains(result, sortMode);
-  }, [domains, search, sortMode]);
+  const s = useDomainState({ showToast });
+  const {
+    domainsRef,
+    setUpdating,
+    selectedDomain,
+    setSelectedDomain,
+    lastGlobalRefresh,
+    setLastGlobalRefresh,
+    isLoading,
+    updateDomains,
+    applyNewPointRef,
+    persistRef,
+    setDomains,
+  } = s;
 
-  const stats = useMemo(() => calculateStats(domains), [domains]);
+  const p = usePredictions({
+    initialPredictions: loadState()?.predictions || [],
+    domainsRef,
+    persistContext: {
+      lastGlobalRefresh,
+      autoRefreshEnabled: loadState()?.autoRefreshEnabled ?? true,
+      lastAutoRefresh: loadState()?.lastAutoRefresh ?? null,
+    },
+    showToast,
+  });
+
+  const r = useDomainRefresh({
+    domainsRef,
+    setUpdating,
+    showToast,
+    isLoading,
+    predictions: p.predictions,
+    lastGlobalRefresh,
+    setLastGlobalRefresh,
+    applyNewPointRef,
+    persistRef,
+  });
+
+  const m = useDomainMutations({
+    domains: s.domains,
+    domainsRef,
+    updateDomains,
+    selectedDomain,
+    setSelectedDomain,
+    showToast,
+    refreshDomain: s.refreshDomain,
+    setLastGlobalRefresh,
+    setLastAutoRefresh: r.setLastAutoRefresh,
+    setAutoRefreshEnabled: r.setAutoRefreshEnabled,
+    setPredictions: p.setPredictions,
+    setDomains,
+  });
+
+  const io = useDomainIO({
+    domains: s.domains,
+    lastGlobalRefresh,
+    autoRefreshEnabled: r.autoRefreshEnabled,
+    lastAutoRefresh: r.lastAutoRefresh,
+    predictions: p.predictions,
+    showToast,
+    setDomains,
+    domainsRef,
+    setLastGlobalRefresh,
+    setAutoRefreshEnabled: r.setAutoRefreshEnabled,
+    setLastAutoRefresh: r.setLastAutoRefresh,
+    setSelectedDomain,
+    setPredictions: p.setPredictions,
+  });
 
   return {
-    domains,
-    filteredAndSorted,
-    isLoading,
-    updating,
-    search,
-    setSearch,
-    sortMode,
-    setSortMode,
+    ...s,
+    ...r,
+    ...m,
+    ...io,
+    ...p,
     toasts,
     dismissToast,
-    addDomain,
-    refreshDomain,
-    refreshAll,
-    removeDomain,
-    clearAll,
-    selectedDomain,
-    selectDomain,
-    getDomain,
-    exportData,
-    importData,
-    stats,
-    autoRefreshEnabled,
-    lastAutoRefresh,
-    toggleAutoRefresh,
-    runAutoRefreshNow,
-    customCount,
-    predictions,
-    addPrediction,
-    removePrediction,
   };
 }
