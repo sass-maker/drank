@@ -39,9 +39,9 @@ Product: <https://domains.sassmaker.com>. Full product context:
 
 Ultracite-generated lint guidance lives in [ULTRACITE.md](ULTRACITE.md). This
 file remains authoritative when project commands, product ownership, safety,
-or release rules differ from generic generated guidance. Regenerate from the
-Fleet Workspace root with `pnpm generate:lint-context` and verify drift with
-`pnpm check:lint-context`.
+or release rules differ from generic generated guidance. The guidance and the
+repository-owned `biome.base.json` are maintained here; there is no Fleet-root
+lint-context command.
 
 ## Critical constraints
 

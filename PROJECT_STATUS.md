@@ -95,7 +95,7 @@ Wrangler Pages command). CI validates `main` but does not deploy it.
 
 - **Standalone dashboard:** single-page app (`app/page.tsx`); deploys to Cloudflare Pages (static export). Also runs locally at http://localhost:3000.
 - **Changelog:** `/changelog` keeps verified product history on the product
-  domain; planned work remains in Fleet Workspace GitHub Issues.
+  domain; planned work remains in Drank's GitHub Issues.
 - **Shared data pipeline:** `data/global-dr.json` + `data/global-sites.json` —
   ~45 global example sites; the static export publishes current observations
   at `/data/global-dr.json` while the site list remains build-pinned.

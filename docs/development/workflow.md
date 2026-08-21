@@ -44,17 +44,17 @@ pnpm dev          # http://localhost:3000
 ## Lint / format
 
 - Biome (`biome.json`) remains the only linter + formatter. The project extends
-  the pinned Ultracite React, Next.js, and Vitest presets plus Fleet's shared
-  `foundry/ops/templates/biome.base.json` layer.
+  the pinned Ultracite React, Next.js, and Vitest presets plus its checked-in
+  `biome.base.json` layer.
 - The shared Fleet layer keeps single quotes, semicolons, 2-space indentation,
   100-column lines, es5 trailing commas, and the deliberate `a11y`,
   `noExplicitAny`, `useExhaustiveDependencies`, `noImgElement`, and
   `organizeImports` exceptions.
 - `public/` and common build/generated directories are force-ignored; unknown
   file types such as SVG are ignored by Biome.
-- Generated generic lint guidance lives in `ULTRACITE.md`. Run
-  `pnpm generate:lint-context` or `pnpm check:lint-context` from the Fleet
-  Workspace root; the nearest `AGENTS.md` remains authoritative.
+- Generated generic lint guidance lives in `ULTRACITE.md`; the nearest
+  `AGENTS.md` remains authoritative. There is no Fleet-root lint-context
+  command.
 
 ## Build
 
