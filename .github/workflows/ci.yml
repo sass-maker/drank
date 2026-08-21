@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   reusable:
-    uses: sass-maker/workflows/.github/workflows/drank-ci.yml@main
+    uses: sass-maker/workflows-and-skills/.github/workflows/drank-ci.yml@main
 
   code-health:
     runs-on: ubuntu-latest
