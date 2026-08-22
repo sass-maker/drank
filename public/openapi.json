@@ -1,0 +1,186 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DRank public agent surfaces",
+    "version": "1.0.0",
+    "description": "Read-only, unauthenticated endpoints that let AI agents discover and consume the DRank Domain Rating tracker, its markdown alternates, and machine-readable indexes."
+  },
+  "servers": [{ "url": "https://domains.sassmaker.com" }],
+  "paths": {
+    "/api/ai": {
+      "get": {
+        "summary": "Machine-readable site descriptor",
+        "description": "Returns a JSON object describing the site, its surfaces, and markdown-negotiation rules. Served as a static JSON file via _redirects.",
+        "operationId": "getAiDescriptor",
+        "tags": ["discovery"],
+        "responses": {
+          "200": {
+            "description": "Site descriptor JSON",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/api/dr": {
+      "get": {
+        "summary": "Proxy Ahrefs Domain Rating lookup",
+        "description": "Cloudflare Pages Function that proxies the Ahrefs free public Domain Rating endpoint, bypassing browser CORS. Requires a 'target' query parameter (domain name).",
+        "operationId": "getDomainRating",
+        "tags": ["data"],
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The domain to look up (e.g. example.com)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Domain Rating result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": { "type": "string" },
+                    "dr": { "type": "number" },
+                    "fetchedAt": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid target parameter",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "429": {
+            "description": "Rate limited by Ahrefs",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "502": {
+            "description": "Ahrefs API error",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/api/advisor": {
+      "post": {
+        "summary": "AI Domain Rating advisor",
+        "description": "Cloudflare Pages Function that generates conservative, evidence-bounded DR advice via a server-side AI gateway. Requires a Turnstile token and a valid domain/DR/trend payload.",
+        "operationId": "postAdvisor",
+        "tags": ["data"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "domain": { "type": "string" },
+                  "dr": { "type": "number" },
+                  "trend": { "type": "string" },
+                  "turnstileToken": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Advisor guidance",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "403": {
+            "description": "Turnstile verification failed",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "503": {
+            "description": "Advisor not configured",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "summary": "llms.txt index",
+        "description": "A concise, link-driven index of DRank surfaces following the llms.txt convention.",
+        "operationId": "getLlmsTxt",
+        "tags": ["discovery"],
+        "responses": {
+          "200": {
+            "description": "llms.txt plain-text index",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/llms-full.txt": {
+      "get": {
+        "summary": "Full llms.txt corpus",
+        "description": "An expanded plain-text dump of DRank surfaces and context.",
+        "operationId": "getLlmsFullTxt",
+        "tags": ["discovery"],
+        "responses": {
+          "200": {
+            "description": "Full plain-text corpus",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "summary": "XML sitemap",
+        "description": "A sitemap listing every public route on domains.sassmaker.com.",
+        "operationId": "getSitemap",
+        "tags": ["discovery"],
+        "responses": {
+          "200": {
+            "description": "Sitemap XML",
+            "content": { "application/xml": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "This OpenAPI document",
+        "description": "The OpenAPI 3.1 specification for the public agent surfaces.",
+        "operationId": "getOpenApi",
+        "tags": ["discovery"],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON document",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/index.md": {
+      "get": {
+        "summary": "Home page as markdown",
+        "description": "The home page rendered as standalone markdown. Every HTML route has a .md alternate.",
+        "operationId": "getHomeMarkdown",
+        "tags": ["markdown"],
+        "responses": {
+          "200": {
+            "description": "Markdown body",
+            "content": { "text/markdown": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {}
+  }
+}

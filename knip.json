@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
-  "entry": ["functions/api/**/*.ts", "scripts/**/*.mjs"],
+  "entry": ["functions/_middleware.ts", "functions/api/**/*.ts", "scripts/**/*.mjs"],
   "project": ["**/*.{ts,tsx,js,jsx,mjs,cjs,mts}"],
   "ignore": ["docs-site/**"],
   "ignoreDependencies": ["tailwindcss"],

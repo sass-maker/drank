@@ -6,4 +6,5 @@ Sitemap: https://domains.sassmaker.com/sitemap.xml
 Allow: /llms.txt
 Allow: /index.md
 Allow: /api/ai
+Allow: /openapi.json
 Allow: /llms-full.txt
