@@ -1,0 +1,30 @@
+# Security headers applied to all static asset responses.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+# HTML pages that have markdown alternates — advertise content negotiation.
+/
+  Vary: Accept, Accept-Encoding
+  Cache-Control: public, max-age=0, must-revalidate
+
+/data
+  Vary: Accept, Accept-Encoding
+
+/changelog
+  Vary: Accept, Accept-Encoding
+
+# Agent surfaces — JSON with permissive CORS.
+/api/ai
+  Access-Control-Allow-Origin: *
+  Content-Type: application/json; charset=utf-8
+  Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=86400
+  X-Content-Type-Options: nosniff
+
+/openapi.json
+  Access-Control-Allow-Origin: *
+  Content-Type: application/json; charset=utf-8
+  Cache-Control: public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800
+  X-Content-Type-Options: nosniff

@@ -6,6 +6,7 @@
   "llmsFull": "https://domains.sassmaker.com/llms-full.txt",
   "sitemap": "https://domains.sassmaker.com/sitemap.xml",
   "robots": "https://domains.sassmaker.com/robots.txt",
+  "openapi": "https://domains.sassmaker.com/openapi.json",
   "markdown": {
     "suffix": ".md",
     "negotiation": true

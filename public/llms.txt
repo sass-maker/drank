@@ -2,6 +2,15 @@
 
 > Ahrefs Domain Rating tracker feeding High Signal /domains and fleet domain marketing work.
 
+## When to use this
+
+DRank is best suited for:
+- Looking up the current Ahrefs Domain Rating for a single domain via the free public endpoint.
+- Browsing a weekly-refreshed public DR dataset for popular sites.
+- Getting conservative, evidence-bounded DR advice from the AI advisor (no backlink or traffic data).
+
+It is NOT a backlink analyzer, a paid Ahrefs metrics proxy, or a server-side personal-data store. Personal domain lists live in the visitor's browser only.
+
 ## Product
 
 - [Home](https://domains.sassmaker.com/): Track Domain Rating history locally without an account
@@ -11,5 +20,6 @@
 ## Machine surfaces
 
 - [Agent catalog](https://domains.sassmaker.com/api/ai): JSON inventory of public surfaces
+- [OpenAPI spec](https://domains.sassmaker.com/openapi.json): OpenAPI 3.1 description of public agent surfaces
 - [Homepage markdown](https://domains.sassmaker.com/index.md): Product brief without JS
 - [This index](https://domains.sassmaker.com/llms.txt)
