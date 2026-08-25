@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Check internal Markdown links resolve to a real file in the repo.
 
-Blume's `validate` is the presentation-layer check (it only knows about the
-`docs/` route space, so it flags valid `../../AGENTS.md`-style links as broken).
 This script is the *source-of-truth* check: it walks the actual filesystem and
 fails when a Markdown link points at a path that does not exist.
 
@@ -19,7 +17,7 @@ Link forms handled:
 Skipped (not filesystem concerns):
   - External:      http://, https://, mailto:, ftp:, data:, tel:
   - Anchor-only:   #section
-  - Absolute site: /route          (Blume route space; checked by `blume validate`)
+  - Absolute site: /route          (treated as repo-root-relative)
 
 For each kept link, the anchor (`#...`) and query (`?...`) are stripped, the
 target is resolved relative to the source file's directory, and the target must
@@ -91,8 +89,7 @@ def resolve_target(source: Path, raw: str) -> Path:
 def target_exists(path: Path) -> bool:
     if path.exists():
         return True
-    # Allow extensionless links to resolve to a `.md` file (Blume route style
-    # used inside docs/, e.g. `[factory](/factory)` or `[x](factory)`).
+    # Allow extensionless links to resolve to a `.md` file used inside docs.
     if path.is_dir() or (path.with_suffix(".md")).exists():
         return True
     # Allow linking to a directory's README when the bare dir is referenced.

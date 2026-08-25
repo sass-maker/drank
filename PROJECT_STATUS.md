@@ -53,7 +53,7 @@ Wrangler Pages command). CI validates `main` but does not deploy it.
 - **2026-08-12** — Adopted Fleet's measurable code-health gate across format,
   lint, types, tests and coverage, unused code, complexity, duplication, cycles,
   and dependency risk. Removed the duplicate batch-refresh implementation and
-  redundant root Blume boundary; remaining exact legacy baselines are tracked
+  redundant root documentation boundary; remaining exact legacy baselines are tracked
   in GitHub issue #322.
 - **2026-08-09** — Released the tested dashboard to the `drank` Cloudflare
   Pages project, verified the public surface, and pinned Next.js output tracing

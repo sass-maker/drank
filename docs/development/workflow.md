@@ -29,8 +29,7 @@ pnpm dev          # http://localhost:3000
 | `pnpm test:coverage` | Vitest with v8 coverage |
 | `pnpm quality` | Full Fleet code-health gate |
 | `pnpm deploy` | Build + `wrangler pages deploy out --project-name=drank` |
-| `pnpm docs:check` | Docs link check + Blume build (see below) |
-| `pnpm docs:build` | Blume build → `docs-site/dist/` |
+| `pnpm docs:check` | Docs link check |
 
 ## Testing
 
@@ -83,8 +82,8 @@ The root `.github/workflows/drank-ci.yml` runs on relevant pushes and pull reque
 - reusable application job: install, lint, production build, and bundle size;
 - local code-health job: format, lint, types, tests and coverage, unused code,
   complexity, duplication, cycles, and exact dependency-risk enforcement;
-- `docs` job: `scripts/check_docs_links.py` (internal-link check) + Blume
-  build in `docs-site/` — the same gate as `pnpm docs:check`.
+- `docs` job: `scripts/check_docs_links.py` (internal-link check) — the same
+  gate as `pnpm docs:check`.
 
 ## Secrets
 

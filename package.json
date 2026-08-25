@@ -19,8 +19,6 @@
     "size": "size-limit",
     "test:coverage": "vitest run --coverage",
     "docs:check": "bash scripts/validate_docs.sh",
-    "docs:build": "cd docs-site && pnpm run build",
-    "docs:dev": "cd docs-site && pnpm run dev",
     "knip": "knip --no-exit-code --reporter symbols",
     "knip:strict": "knip --reporter symbols",
     "quality:unused": "pnpm run knip:strict",

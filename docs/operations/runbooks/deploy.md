@@ -51,8 +51,7 @@ The token must be present in repo secrets as `CLOUDFLARE_API_TOKEN`.
 - `data/*.json` is bundled into the build; the runtime fetch path reads
   the live copy from raw GitHub (see
   [ADR-0005](../../architecture/decisions/0005-dual-data-sources.md)).
-- `docs/` and `docs-site/` are not part of the product build. The docs site
-  is a separate deploy target (see `docs-site/README.md`).
+- `docs/` is not part of the product build.
 
 ## Rollback
 

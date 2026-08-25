@@ -6,10 +6,8 @@ global leaderboard is published as public JSON and refreshed weekly by a
 GitHub Action. Product: <https://domains.sassmaker.com>.
 
 This `docs/` tree is the canonical source of truth for product knowledge,
-architecture, decisions, workflows, operations, and durable learnings.
-Blume (see [`docs-site/`](../docs-site)) is only the presentation + search
-layer over this tree. Edit the Markdown here; never edit generated Blume
-output.
+architecture, decisions, workflows, operations, and durable learnings. Edit
+the Markdown here; the repository validator checks its links.
 
 ## Start here
 
@@ -49,5 +47,4 @@ output.
 - Durable learnings go under `knowledge/learnings/`; abandoned approaches go
   under `knowledge/failed-approaches/` with the reason.
 - Keep pages short (150–300 lines). Split rather than grow.
-- Run `pnpm docs:check` before committing doc changes (link check + Blume
-  build). CI runs the same gate.
+- Run `pnpm docs:check` before committing doc changes. CI runs the same gate.

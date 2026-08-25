@@ -32,8 +32,7 @@ Product: <https://domains.sassmaker.com>. Full product context:
 | `pnpm quality` | Complete Fleet code-health gate |
 | `pnpm size` | size-limit on `out/` bundles |
 | `pnpm deploy` | Build + `wrangler pages deploy out --project-name=drank` |
-| `pnpm docs:check` | Docs link check + Blume build |
-| `pnpm docs:build` | Blume build → `docs-site/dist/` |
+| `pnpm docs:check` | Docs link check |
 
 ## Generated lint guidance
 
@@ -63,8 +62,8 @@ lint-context command.
 
 ## Documentation navigation
 
-**Source of truth = committed Markdown.** Blume (`docs-site/`) is only the
-presentation + search layer.
+**Source of truth = committed Markdown.** The docs validator checks the
+repository's Markdown links and root documentation.
 
 - [`docs/index.md`](docs/index.md) — start here; the full doc tree nav.
 - [`STATUS.md`](STATUS.md) — short view: current objective, active work, blockers, next steps.
@@ -90,9 +89,7 @@ presentation + search layer.
    approaches** → `docs/knowledge/failed-approaches/` with the reason.
 4. **Keep pages short** (150–300 lines). Split rather than grow.
 5. **Run `pnpm docs:check` before committing doc changes.** CI runs the
-   same gate (link check + Blume build).
-6. **Do not edit generated Blume output** (`docs-site/dist/`, `docs-site/.blume/`).
-   Edit the Markdown in `docs/` and rebuild.
+   same link-checking gate.
 7. **Preserve history.** Prefer `docs/archive/<name>.md` over deletion.
    Use `git mv` when moving docs so rename history is kept.
 8. **Status**: `PROJECT_STATUS.md` is the durable fleet-mandated record for

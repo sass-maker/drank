@@ -73,22 +73,16 @@ function checkComplexity() {
 }
 
 function checkDependencies() {
-  const reports = [projectRoot, resolve(projectRoot, 'docs-site')].map((cwd) => {
-    const result = run('pnpm', ['audit', '--json'], { allowFailure: true, cwd });
-    return JSON.parse(result.stdout);
-  });
-  const accepted = new Set(['GHSA-w3rx-r6r6-pgpr', 'GHSA-5p2g-fcmc-qvqq']);
-  const severe = reports.flatMap((report) =>
-    Object.values(report.advisories ?? {}).filter((advisory) =>
+  const result = run('pnpm', ['audit', '--json'], { allowFailure: true, cwd: projectRoot });
+  const report = JSON.parse(result.stdout);
+  const severe = Object.values(report.advisories ?? {}).filter((advisory) =>
       ['critical', 'high'].includes(advisory.severity)
-    )
   );
-  const unexpected = severe.filter((advisory) => !accepted.has(advisory.github_advisory_id));
+  const unexpected = severe;
   const critical = severe.filter((advisory) => advisory.severity === 'critical').length;
   const high = severe.filter((advisory) => advisory.severity === 'high').length;
   console.log(
-    `Dependencies: ${critical} critical, ${high} high, ${unexpected.length} unexpected; ` +
-      `${severe.length - unexpected.length} accepted development-tool advisories.`
+    `Dependencies: ${critical} critical, ${high} high, ${unexpected.length} unexpected.`
   );
   if (unexpected.length > 0) {
     throw new Error(
