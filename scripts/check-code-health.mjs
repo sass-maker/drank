@@ -76,14 +76,12 @@ function checkDependencies() {
   const result = run('pnpm', ['audit', '--json'], { allowFailure: true, cwd: projectRoot });
   const report = JSON.parse(result.stdout);
   const severe = Object.values(report.advisories ?? {}).filter((advisory) =>
-      ['critical', 'high'].includes(advisory.severity)
+    ['critical', 'high'].includes(advisory.severity)
   );
   const unexpected = severe;
   const critical = severe.filter((advisory) => advisory.severity === 'critical').length;
   const high = severe.filter((advisory) => advisory.severity === 'high').length;
-  console.log(
-    `Dependencies: ${critical} critical, ${high} high, ${unexpected.length} unexpected.`
-  );
+  console.log(`Dependencies: ${critical} critical, ${high} high, ${unexpected.length} unexpected.`);
   if (unexpected.length > 0) {
     throw new Error(
       `Unexpected critical/high advisories: ${unexpected
