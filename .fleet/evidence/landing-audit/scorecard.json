@@ -1,0 +1,40 @@
+{
+  "$schema": "fleet.landing-audit.v1",
+  "project": "drank",
+  "priority": "P4",
+  "decision": "Infrastructure",
+  "auditedAt": "2026-08-29",
+  "candidateUrl": "https://surrounded-abroad-couples-neighbors.trycloudflare.com/",
+  "productionUrl": "https://domains.sassmaker.com/",
+  "releaseState": "Local candidate qualified; the deterministic Ask AI and project-strip composition repair is not deployed by this audit.",
+  "implementationAction": "preserve",
+  "migrationCandidate": false,
+  "gates": {
+    "contentPurpose": {
+      "score": 95,
+      "status": "pass",
+      "evidence": "The first viewport clearly identifies a no-sign-up, browser-local Domain Rating tracker for shared examples and the visitor's own sites. The page is the working tool rather than a separate marketing shell."
+    },
+    "designQuality": {
+      "score": 91,
+      "status": "pass",
+      "evidence": "The dense dashboard is coherent and responsive at 390 and 1440 pixels with zero horizontal overflow or console errors. Its extreme mobile length is acceptable for a P4 data tool, not a migration reason."
+    },
+    "seo": {
+      "score": 96,
+      "status": "pass",
+      "evidence": "The candidate passes all critical title, description, canonical, Open Graph, JSON-LD, heading, leak, and link checks. Advisory only: the app-like page has no h2 and about 267 words. Production link graph crawled 3 pages with zero internal errors, redirects, or orphans."
+    },
+    "geo": {
+      "score": 100,
+      "status": "pass",
+      "evidence": "Production agent-index audit is S-tier 100 with readable llms.txt, /api/ai, homepage Markdown, robots, sitemap, JSON-LD, and complete catalog integrity."
+    },
+    "performance": {
+      "score": 98,
+      "status": "pass",
+      "evidence": "PSI Swarm completed 20/20 serial audits. Mobile-mid p75 LCP was 0.840 s, mobile-fast 0.482 s, desktop 0.291 s, and the harsh mobile-slow profile 1.634 s; CLS was 0.030 and mobile-mid TBT 45 ms. The only material advisory was unused JavaScript in the Next.js client bundle."
+    }
+  },
+  "minimumObserved": 91
+}
