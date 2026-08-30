@@ -12,6 +12,11 @@ const turnstileEnv = {
   TURNSTILE_SECRET: 'test-secret',
   TURNSTILE_HOSTNAMES: 'drank.example',
 };
+const aiEnv = {
+  AI_BASE_URL: 'https://direct.test/v1',
+  AI_API_KEY: 'test-key',
+  AI_MODEL: 'free-model',
+};
 const turnstileSuccess = () =>
   new Response(
     JSON.stringify({
@@ -58,8 +63,8 @@ afterEach(() => {
 });
 
 describe('POST /api/advisor', () => {
-  it('returns validated advice from the configured gateway', async () => {
-    const gatewayFetch = vi
+  it('returns validated advice from the configured direct provider', async () => {
+    const providerFetch = vi
       .fn()
       .mockResolvedValueOnce(turnstileSuccess())
       .mockResolvedValueOnce(
@@ -68,42 +73,41 @@ describe('POST /api/advisor', () => {
           { status: 200 }
         )
       );
-    vi.stubGlobal('fetch', gatewayFetch);
+    vi.stubGlobal('fetch', providerFetch);
 
     const response = await onRequestPost({
       request: request(),
       env: {
         ...turnstileEnv,
-        FREE_AI_GATEWAY_API_KEY: 'test-key',
-        FREE_AI_BASE_URL: 'https://gateway.test/',
+        ...aiEnv,
       },
     });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ advice: validAdvice });
-    expect(gatewayFetch).toHaveBeenCalledWith(
-      'https://gateway.test/v1/chat/completions',
+    expect(providerFetch).toHaveBeenCalledWith(
+      'https://direct.test/v1/chat/completions',
       expect.objectContaining({ method: 'POST' })
     );
   });
 
-  it('fails closed when gateway configuration is missing', async () => {
-    const gatewayFetch = vi.fn();
-    vi.stubGlobal('fetch', gatewayFetch);
+  it('fails closed when direct provider configuration is missing', async () => {
+    const providerFetch = vi.fn();
+    vi.stubGlobal('fetch', providerFetch);
     const response = await onRequestPost({ request: request(), env: {} });
     expect(response.status).toBe(503);
-    expect(gatewayFetch).not.toHaveBeenCalled();
+    expect(providerFetch).not.toHaveBeenCalled();
   });
 
   it('rejects invalid input before calling the provider', async () => {
-    const gatewayFetch = vi.fn();
-    vi.stubGlobal('fetch', gatewayFetch);
+    const providerFetch = vi.fn();
+    vi.stubGlobal('fetch', providerFetch);
     const response = await onRequestPost({
       request: request({ ...body, currentDr: -1 }),
-      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
+      env: { ...turnstileEnv, ...aiEnv },
     });
     expect(response.status).toBe(400);
-    expect(gatewayFetch).not.toHaveBeenCalled();
+    expect(providerFetch).not.toHaveBeenCalled();
   });
 
   it('preserves a retryable failure when the provider is unavailable', async () => {
@@ -116,7 +120,7 @@ describe('POST /api/advisor', () => {
     );
     const response = await onRequestPost({
       request: request(),
-      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
+      env: { ...turnstileEnv, ...aiEnv },
     });
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ retryable: true });
@@ -136,24 +140,24 @@ describe('POST /api/advisor', () => {
     );
     const response = await onRequestPost({
       request: request(),
-      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
+      env: { ...turnstileEnv, ...aiEnv },
     });
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ retryable: true });
   });
 
   it('fails closed when Turnstile verification is rejected', async () => {
-    const gatewayFetch = vi
+    const providerFetch = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ success: false }), { status: 200 }));
-    vi.stubGlobal('fetch', gatewayFetch);
+    vi.stubGlobal('fetch', providerFetch);
 
     const response = await onRequestPost({
       request: request(),
-      env: { ...turnstileEnv, GATEWAY_API_KEY: 'test-key' },
+      env: { ...turnstileEnv, ...aiEnv },
     });
 
     expect(response.status).toBe(403);
-    expect(gatewayFetch).toHaveBeenCalledTimes(1);
+    expect(providerFetch).toHaveBeenCalledTimes(1);
   });
 });

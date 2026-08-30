@@ -29,13 +29,16 @@
     "quality": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:coverage && pnpm run quality:unused && pnpm run quality:complexity && pnpm run quality:duplication && pnpm run quality:cycles && pnpm run quality:dependencies"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "2.0.41",
+    "ai": "6.0.168",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
     "next": "16.2.11",
     "posthog-js": "^1.396.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "workers-ai-provider": "3.3.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",

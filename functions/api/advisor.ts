@@ -1,3 +1,7 @@
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { generateText } from 'ai';
+import { createWorkersAI, type WorkersAISettings } from 'workers-ai-provider';
+
 import {
   parseDrAdvisorAdvice,
   parseDrAdvisorRequest,
@@ -6,10 +10,14 @@ import {
 } from '../../lib/dr-advisor';
 import { verifyTurnstile } from '../lib/turnstile';
 
+type WorkersAiBinding = Extract<WorkersAISettings, { binding: unknown }>['binding'];
+const DEFAULT_WORKERS_AI_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+
 type AdvisorEnv = {
-  FREE_AI_BASE_URL?: string;
-  FREE_AI_GATEWAY_API_KEY?: string;
-  GATEWAY_API_KEY?: string;
+  AI?: WorkersAiBinding;
+  AI_BASE_URL?: string;
+  AI_API_KEY?: string;
+  AI_MODEL?: string;
   TURNSTILE_HOSTNAMES?: string;
   TURNSTILE_SECRET?: string;
 };
@@ -19,11 +27,6 @@ type AdvisorContext = {
   env: AdvisorEnv;
 };
 
-type GatewayResponse = {
-  choices?: Array<{ message?: { content?: string } }>;
-};
-
-const DEFAULT_BASE_URL = 'https://ai-gateway.sassmaker.com';
 const SYSTEM_PROMPT = `You are drank's conservative Domain Rating advisor.
 You receive only a domain name, its observed Ahrefs Domain Rating, and a bounded trend.
 You do not have backlink counts, referring-domain data, page content, traffic, or paid Ahrefs metrics.
@@ -32,11 +35,13 @@ Return strict JSON only: {"schemaVersion":1,"why":string,"evidenceLimit":string,
 Return 3-5 actions ordered by likely leverage. Explain the observed score/trend conditionally and make the evidence limit explicit.`;
 
 export async function onRequestPost(context: AdvisorContext): Promise<Response> {
-  const apiKey = context.env.FREE_AI_GATEWAY_API_KEY ?? context.env.GATEWAY_API_KEY;
-  if (!apiKey) {
+  const baseUrl = context.env.AI_BASE_URL?.replace(/\/$/, '');
+  const apiKey = context.env.AI_API_KEY;
+  const model = context.env.AI_MODEL;
+  if (!context.env.AI && (!baseUrl || !apiKey || !model)) {
     return json(
       {
-        error: 'DR Advisor is not configured. Add the server-side gateway key and retry.',
+        error: 'DR Advisor is not configured. Add the AI binding or direct endpoint config.',
         retryable: true,
       },
       503
@@ -68,62 +73,44 @@ export async function onRequestPost(context: AdvisorContext): Promise<Response> 
     return json({ error: 'Verification failed. Please try again.' }, 403);
   }
 
-  const baseUrl = (context.env.FREE_AI_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');
   try {
-    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'auto',
-        project_id: 'drank',
-        stream: false,
-        temperature: 0.2,
-        max_tokens: 900,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              observed: input,
-              instruction:
-                'Explain only what this measurement can support, then give prioritized general actions.',
-            }),
-          },
-        ],
+    const languageModel = context.env.AI
+      ? createWorkersAI({ binding: context.env.AI })(DEFAULT_WORKERS_AI_MODEL)
+      : createOpenAICompatible({
+          name: 'drank-direct',
+          baseURL: baseUrl as string,
+          apiKey: apiKey as string,
+        }).chatModel(model as string);
+    const result = await generateText({
+      model: languageModel,
+      system: SYSTEM_PROMPT,
+      prompt: JSON.stringify({
+        observed: input,
+        instruction:
+          'Explain only what this measurement can support, then give prioritized general actions.',
       }),
-      signal: AbortSignal.timeout(20_000),
+      temperature: 0.2,
+      maxOutputTokens: 900,
+      maxRetries: 0,
+      timeout: { totalMs: 20_000 },
     });
-
-    if (!response.ok) {
-      const status = response.status === 429 ? 429 : 502;
-      return json(
-        {
-          error:
-            status === 429
-              ? 'Advisor generation is rate-limited. Try again shortly.'
-              : 'Advisor generation is temporarily unavailable.',
-          retryable: true,
-        },
-        status
-      );
-    }
-
-    const payload = (await response.json()) as GatewayResponse;
-    const content = payload.choices?.[0]?.message?.content;
-    const advice: DrAdvisorAdvice = parseDrAdvisorAdvice(content);
+    const advice: DrAdvisorAdvice = parseDrAdvisorAdvice(result.text);
     return json({ advice, generatedAt: Date.now() }, 200);
   } catch (error) {
     console.error('DR Advisor generation failed', error);
+    const status =
+      error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 429
+        ? 429
+        : 502;
     return json(
       {
-        error: 'Advisor generation failed or returned invalid guidance. Your DR history is safe.',
+        error:
+          status === 429
+            ? 'Advisor generation is rate-limited. Try again shortly.'
+            : 'Advisor generation failed or returned invalid guidance. Your DR history is safe.',
         retryable: true,
       },
-      502
+      status
     );
   }
 }
