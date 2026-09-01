@@ -78,7 +78,6 @@ export default function RootLayout({
         <script
           src="https://sassmaker.com/ai-chat-footer.js"
           data-name="Drank"
-          data-compose="false"
           defer
         />
       </body>
